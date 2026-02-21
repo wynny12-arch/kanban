@@ -815,7 +815,7 @@ function renderBoard() {
   COLS.forEach(col => {
     const PRI_ORDER = { high:0, med:1, low:2, none:3 };
     let tasks = b.tasks.filter(t => t.col === col);
-    if (q)             tasks = tasks.filter(t => t.title.toLowerCase().includes(q) || (t.desc||'').toLowerCase().includes(q));
+    if (q)             tasks = tasks.filter(t => t.title.toLowerCase().includes(q) || (t.desc||'').toLowerCase().includes(q) || (t.tags||[]).some(tag => tag.toLowerCase().includes(q)));
     if (priFilter !== 'all') tasks = tasks.filter(t => (t.priority||'none') === priFilter);
     tasks.sort((a,b) => PRI_ORDER[a.priority||'none'] - PRI_ORDER[b.priority||'none']);
 
@@ -1478,7 +1478,7 @@ function renderFocus() {
   const PRI_ORDER = { high:0, med:1, low:2, none:3 };
   const q = document.getElementById('search-input').value.trim().toLowerCase();
   let tasks = b.tasks.filter(t => t.col === currentFocusCol);
-  if (q) tasks = tasks.filter(t => t.title.toLowerCase().includes(q) || (t.desc||'').toLowerCase().includes(q));
+  if (q) tasks = tasks.filter(t => t.title.toLowerCase().includes(q) || (t.desc||'').toLowerCase().includes(q) || (t.tags||[]).some(tag => tag.toLowerCase().includes(q)));
   if (priFilter !== 'all') tasks = tasks.filter(t => (t.priority||'none') === priFilter);
   tasks.sort((a,b) => PRI_ORDER[a.priority||'none'] - PRI_ORDER[b.priority||'none']);
 
