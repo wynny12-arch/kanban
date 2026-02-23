@@ -2076,7 +2076,7 @@ function pctChg(pct) {
 }
 function priceChg(now, prev) { return pctChg((now - prev) / prev * 100); }
 
-/* Weather — Open-Meteo (free, no key, reliable on mobile) */
+/* Weather — ipinfo.io + Open-Meteo (no key, no GPS permission needed) */
 const WMO_DESC = {
   0:'Clear',1:'Mainly clear',2:'Partly cloudy',3:'Overcast',
   45:'Foggy',48:'Icy fog',
@@ -2089,36 +2089,17 @@ const WMO_DESC = {
 };
 async function fetchWeather() {
   try {
-    let lat, lon, city = '';
-    // Try device geolocation first
-    try {
-      const pos = await new Promise((res, rej) =>
-        navigator.geolocation.getCurrentPosition(res, rej, { timeout: 5000 })
-      );
-      lat = pos.coords.latitude;
-      lon = pos.coords.longitude;
-    } catch {
-      // Fall back to IP geolocation
-      const ip = await fetch('https://ipapi.co/json/').then(r => r.json());
-      lat  = ip.latitude;
-      lon  = ip.longitude;
-      city = ip.city || '';
-    }
-    // Fetch weather from Open-Meteo
+    // IP-based location — works on all devices without permission prompts
+    const info = await fetch('https://ipinfo.io/json').then(r => r.json());
+    if (!info.loc) throw new Error('no location');
+    const [lat, lon] = info.loc.split(',').map(Number);
+    const city = info.city || '';
+    // Weather from Open-Meteo
     const wx = await fetch(
       `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
       `&current=temperature_2m,apparent_temperature,weathercode,windspeed_10m,relativehumidity_2m`
     ).then(r => r.json());
     const c = wx.current;
-    // Reverse geocode city name if we got coords from device
-    if (!city) {
-      try {
-        const geo = await fetch(
-          `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`
-        ).then(r => r.json());
-        city = geo.address?.city || geo.address?.town || geo.address?.village || '';
-      } catch {}
-    }
     const desc = WMO_DESC[c.weathercode] || '';
     wBody('w-weather', `
       <div style="font-size:.85rem;font-weight:700;color:var(--text)">${Math.round(c.temperature_2m)}°C
@@ -2150,21 +2131,25 @@ async function fetchStocks() {
     { sym: '^FTSE', label: 'FTSE 100' },
     { sym: '^GSPC', label: 'S&P 500'  },
   ];
-  const rows = await Promise.all(syms.map(async s => {
+  const rows = [];
+  for (const s of syms) {
+    if (rows.length) await new Promise(r => setTimeout(r, 700)); // avoid proxy rate-limit
     try {
       const yhUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(s.sym)}?interval=1d&range=5d`;
       const proxy = `https://api.allorigins.win/get?url=${encodeURIComponent(yhUrl)}`;
-      const resp  = await fetch(proxy).then(r => r.json());
-      const chart = JSON.parse(resp.contents).chart.result[0];
-      const closes = chart.indicators.quote[0].close.filter(v => v != null);
+      const resp   = await fetch(proxy).then(r => r.json());
+      const parsed = JSON.parse(resp.contents);
+      const result = parsed?.chart?.result;
+      if (!result?.length) throw new Error('no data');
+      const closes = result[0].indicators.quote[0].close.filter(v => v != null);
       const cur  = closes[closes.length - 1];
       const prev = closes[closes.length - 2];
       const fmt  = cur.toLocaleString(undefined, { maximumFractionDigits: 0 });
-      return `<div class="widget-row"><span>${s.label}</span><span class="widget-val">${fmt} ${priceChg(cur, prev)}</span></div>`;
-    } catch(e) {
-      return `<div class="widget-row"><span>${s.label}</span><span class="widget-muted">—</span></div>`;
+      rows.push(`<div class="widget-row"><span>${s.label}</span><span class="widget-val">${fmt} ${priceChg(cur, prev)}</span></div>`);
+    } catch {
+      rows.push(`<div class="widget-row"><span>${s.label}</span><span class="widget-muted">—</span></div>`);
     }
-  }));
+  }
   wBody('w-stocks', rows.join(''));
 }
 
