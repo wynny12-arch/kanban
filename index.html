@@ -515,6 +515,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
       <button class="filter-pill"        data-pri="none"  onclick="setPriFilter('none')">None</button>
     </div>
     <div class="topbar-actions">
+      <button class="icon-btn" id="sort-toggle-btn" onclick="toggleSortMode()" title="Switch sort mode">⇅ Priority</button>
       <button class="icon-btn" onclick="openModal(activeCol())">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         Add task
@@ -710,6 +711,7 @@ let undoStack   = null;
 let priFilter   = 'all';
 let storageConfig        = { url: '', anonKey: '' };
 let modalPendingDeletes  = []; // storagePaths to delete from Supabase on save
+let sortMode             = 'priority'; // 'priority' or 'manual'
 
 /* ─── Persistence ───────────────────────────────────────── */
 function save() { localStorage.setItem('kanban_v2', JSON.stringify(state)); schedulePush(); }
@@ -817,7 +819,7 @@ function renderBoard() {
     let tasks = b.tasks.filter(t => t.col === col);
     if (q)             tasks = tasks.filter(t => t.title.toLowerCase().includes(q) || (t.desc||'').toLowerCase().includes(q) || (t.tags||[]).some(tag => tag.toLowerCase().includes(q)));
     if (priFilter !== 'all') tasks = tasks.filter(t => (t.priority||'none') === priFilter);
-    tasks.sort((a,b) => PRI_ORDER[a.priority||'none'] - PRI_ORDER[b.priority||'none']);
+    if (sortMode === 'priority') tasks.sort((a,b) => PRI_ORDER[a.priority||'none'] - PRI_ORDER[b.priority||'none']);
 
     document.getElementById(`count-${col}`).textContent = tasks.length;
     const container = document.getElementById(`cards-${col}`);
@@ -878,6 +880,7 @@ function buildCard(task) {
     ${metaHtml}
     <div class="card-actions">
       <div class="move-btns">
+        ${sortMode === 'manual' ? `<button class="btn btn-move" onclick="moveUp('${task.id}')" title="Move up">↑</button><button class="btn btn-move" onclick="moveDown('${task.id}')" title="Move down">↓</button>` : ''}
         <button class="btn btn-move" onclick="moveTask('${task.id}',-1)" ${colIdx===0?'disabled':''}>←</button>
         <button class="btn btn-move" onclick="moveTask('${task.id}', 1)" ${colIdx===COLS.length-1?'disabled':''}>→</button>
       </div>
@@ -1480,7 +1483,7 @@ function renderFocus() {
   let tasks = b.tasks.filter(t => t.col === currentFocusCol);
   if (q) tasks = tasks.filter(t => t.title.toLowerCase().includes(q) || (t.desc||'').toLowerCase().includes(q) || (t.tags||[]).some(tag => tag.toLowerCase().includes(q)));
   if (priFilter !== 'all') tasks = tasks.filter(t => (t.priority||'none') === priFilter);
-  tasks.sort((a,b) => PRI_ORDER[a.priority||'none'] - PRI_ORDER[b.priority||'none']);
+  if (sortMode === 'priority') tasks.sort((a,b) => PRI_ORDER[a.priority||'none'] - PRI_ORDER[b.priority||'none']);
 
   document.getElementById('focus-title').textContent = COL_LABEL[currentFocusCol];
   document.getElementById('focus-count').textContent = tasks.length;
@@ -1492,6 +1495,55 @@ function renderFocus() {
   } else {
     tasks.forEach(t => grid.appendChild(buildCard(t)));
   }
+}
+
+/* ─── Manual ordering ───────────────────────────────────── */
+function moveUp(id) {
+  const b = board();
+  const task = b.tasks.find(t => t.id === id); if (!task) return;
+  const colTasks = b.tasks.map((t,i) => ({t,i})).filter(({t}) => t.col === task.col);
+  const pos = colTasks.findIndex(({t}) => t.id === id);
+  if (pos === 0) return;
+  const curr = colTasks[pos].i, prev = colTasks[pos-1].i;
+  [b.tasks[curr], b.tasks[prev]] = [b.tasks[prev], b.tasks[curr]];
+  save(); render();
+}
+
+function moveDown(id) {
+  const b = board();
+  const task = b.tasks.find(t => t.id === id); if (!task) return;
+  const colTasks = b.tasks.map((t,i) => ({t,i})).filter(({t}) => t.col === task.col);
+  const pos = colTasks.findIndex(({t}) => t.id === id);
+  if (pos === colTasks.length - 1) return;
+  const curr = colTasks[pos].i, next = colTasks[pos+1].i;
+  [b.tasks[curr], b.tasks[next]] = [b.tasks[next], b.tasks[curr]];
+  save(); render();
+}
+
+function toggleSortMode() {
+  sortMode = sortMode === 'priority' ? 'manual' : 'priority';
+  localStorage.setItem('kanban_sort_mode', sortMode);
+  updateSortBtn();
+  render();
+}
+
+function updateSortBtn() {
+  const btn = document.getElementById('sort-toggle-btn');
+  if (!btn) return;
+  if (sortMode === 'manual') {
+    btn.textContent = '↕ Manual';
+    btn.style.color = 'var(--accent)';
+    btn.style.borderColor = 'var(--accent)';
+  } else {
+    btn.textContent = '⇅ Priority';
+    btn.style.color = '';
+    btn.style.borderColor = '';
+  }
+}
+
+function loadSortMode() {
+  sortMode = localStorage.getItem('kanban_sort_mode') || 'priority';
+  updateSortBtn();
 }
 
 /* ─── Theme ─────────────────────────────────────────────── */
@@ -1911,6 +1963,7 @@ async function storageConnect() {
 load();
 loadSyncConfig();
 loadStorageConfig();
+loadSortMode();
 render();
 syncPull();
 </script>
