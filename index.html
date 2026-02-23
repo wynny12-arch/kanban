@@ -2123,9 +2123,9 @@ function loadAlphaKey() { // kept for boot compat
 async function fetchStocks() {
   if (!twelveDataKey) {
     wBody('w-stocks', `
-      <div class="widget-muted" style="margin-bottom:6px;line-height:1.4">Free key needed from <a href="https://twelvedata.com" target="_blank" style="color:var(--accent)">twelvedata.com</a></div>
+      <div class="widget-muted" style="margin-bottom:6px;line-height:1.4">Free key from <a href="https://twelvedata.com" target="_blank" style="color:var(--accent)">twelvedata.com</a> (800/day)</div>
       <div style="display:flex;gap:4px">
-        <input id="td-key-input" placeholder="Paste key…" style="flex:1;font-size:.72rem;padding:4px 6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);outline:none"/>
+        <input id="td-key-input" placeholder="Paste API key…" style="flex:1;font-size:.72rem;padding:4px 6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);outline:none"/>
         <button onclick="submitTDKey()" style="font-size:.72rem;padding:4px 8px;border-radius:6px;background:var(--accent);color:#fff;border:none;cursor:pointer">Save</button>
       </div>`);
     return;
@@ -2136,14 +2136,18 @@ async function fetchStocks() {
   ];
   const rows = await Promise.all(symbols.map(async s => {
     try {
-      const d = await fetch(`https://api.twelvedata.com/quote?symbol=${s.sym}&apikey=${twelveDataKey}`).then(r => r.json());
-      if (d.status === 'error' || !d.close) throw new Error('no data');
-      const price = parseFloat(d.close);
-      const pct   = parseFloat(d.percent_change);
-      const fmt   = price.toLocaleString(undefined, { maximumFractionDigits: 0 });
-      return `<div class="widget-row"><span>${s.label}</span><span class="widget-val">${fmt} ${pctChg(pct)}</span></div>`;
-    } catch { return `<div class="widget-row"><span>${s.label}</span><span class="widget-muted">—</span></div>`; }
+      const url = `https://api.twelvedata.com/quote?symbol=${s.sym}&apikey=${twelveDataKey}`;
+      const d   = await fetch(url).then(r => r.json());
+      if (d.status === 'error' || !d.close) throw new Error(d.message || JSON.stringify(d).slice(0,80));
+      const cur  = parseFloat(d.close);
+      const prev = parseFloat(d.previous_close);
+      const fmt  = cur.toLocaleString(undefined, { maximumFractionDigits: 0 });
+      return `<div class="widget-row"><span>${s.label}</span><span class="widget-val">${fmt} ${priceChg(cur, prev)}</span></div>`;
+    } catch(e) {
+      return `<div class="widget-row"><span>${s.label}</span><span class="widget-muted" style="font-size:.65rem" title="${e.message}">⚠ ${e.message.slice(0,30)}</span></div>`;
+    }
   }));
+  rows.push(`<div style="text-align:right;margin-top:2px"><button onclick="clearTDKey()" style="font-size:.62rem;background:none;border:none;color:var(--text-muted,#64748b);cursor:pointer;text-decoration:underline">change key</button></div>`);
   wBody('w-stocks', rows.join(''));
 }
 
@@ -2154,6 +2158,12 @@ function submitTDKey() {
     localStorage.setItem('kanban_td_key', twelveDataKey);
     fetchStocks();
   }
+}
+
+function clearTDKey() {
+  twelveDataKey = '';
+  localStorage.removeItem('kanban_td_key');
+  fetchStocks();
 }
 
 /* Crypto — Kraken (free, no key, CORS enabled) */
