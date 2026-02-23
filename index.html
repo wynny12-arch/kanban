@@ -2131,7 +2131,7 @@ async function fetchStocks() {
     return;
   }
   try {
-    const url = `https://financialmodelingprep.com/api/v3/quote/%5EFTSE,%5EGSPC?apikey=${twelveDataKey}`;
+    const url = `https://financialmodelingprep.com/stable/quote?symbol=%5EFTSE,%5EGSPC&apikey=${twelveDataKey}`;
     const data = await fetch(url).then(r => r.json());
     if (!Array.isArray(data) || !data.length) throw new Error(JSON.stringify(data).slice(0,60));
     const labels = { '^FTSE': 'FTSE 100', '^GSPC': 'S&P 500' };
