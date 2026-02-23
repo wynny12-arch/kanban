@@ -2113,55 +2113,31 @@ async function fetchFX() {
   } catch { wBody('w-fx', '<span class="widget-muted">Unavailable</span>'); }
 }
 
-/* Markets — Twelve Data (free key from twelvedata.com, 800 calls/day) */
-let twelveDataKey = '';
-
-function loadAlphaKey() { // kept for boot compat
-  twelveDataKey = localStorage.getItem('kanban_td_key') || '';
-}
-
+/* Markets — Yahoo Finance via allorigins CORS proxy (no key needed) */
 async function fetchStocks() {
-  if (!twelveDataKey) {
-    wBody('w-stocks', `
-      <div class="widget-muted" style="margin-bottom:6px;line-height:1.4">Free key from <a href="https://site.financialmodelingprep.com/register" target="_blank" style="color:var(--accent)">financialmodelingprep.com</a></div>
-      <div style="display:flex;gap:4px">
-        <input id="td-key-input" placeholder="Paste FMP API key…" style="flex:1;font-size:.72rem;padding:4px 6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);outline:none"/>
-        <button onclick="submitTDKey()" style="font-size:.72rem;padding:4px 8px;border-radius:6px;background:var(--accent);color:#fff;border:none;cursor:pointer">Save</button>
-      </div>`);
-    return;
-  }
-  try {
-    const url = `https://financialmodelingprep.com/stable/quote?symbol=%5EFTSE,%5EGSPC&apikey=${twelveDataKey}`;
-    const data = await fetch(url).then(r => r.json());
-    if (!Array.isArray(data) || !data.length) throw new Error(JSON.stringify(data).slice(0,60));
-    const labels = { '^FTSE': 'FTSE 100', '^GSPC': 'S&P 500' };
-    const rows = data.map(d => {
-      const fmt = d.price.toLocaleString(undefined, { maximumFractionDigits: 0 });
-      return `<div class="widget-row"><span>${labels[d.symbol] || d.symbol}</span><span class="widget-val">${fmt} ${priceChg(d.price, d.previousClose)}</span></div>`;
-    });
-    rows.push(`<div style="text-align:right;margin-top:2px"><button onclick="clearTDKey()" style="font-size:.62rem;background:none;border:none;color:var(--text-muted,#64748b);cursor:pointer;text-decoration:underline">change key</button></div>`);
-    wBody('w-stocks', rows.join(''));
-  } catch(e) {
-    wBody('w-stocks', `
-      <div class="widget-muted" style="font-size:.72rem;margin-bottom:4px">⚠ ${e.message.slice(0,50)}</div>
-      <div style="text-align:right"><button onclick="clearTDKey()" style="font-size:.62rem;background:none;border:none;color:var(--text-muted,#64748b);cursor:pointer;text-decoration:underline">change key</button></div>`);
-  }
+  const syms = [
+    { sym: '%5EFTSE', label: 'FTSE 100' },
+    { sym: '%5EGSPC', label: 'S&P 500'  },
+  ];
+  const rows = await Promise.all(syms.map(async s => {
+    try {
+      const yhUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${s.sym}?interval=1d&range=5d`;
+      const proxy = `https://api.allorigins.win/get?url=${encodeURIComponent(yhUrl)}`;
+      const resp  = await fetch(proxy).then(r => r.json());
+      const chart = JSON.parse(resp.contents).chart.result[0];
+      const closes = chart.indicators.quote[0].close.filter(v => v != null);
+      const cur  = closes[closes.length - 1];
+      const prev = closes[closes.length - 2];
+      const fmt  = cur.toLocaleString(undefined, { maximumFractionDigits: 0 });
+      return `<div class="widget-row"><span>${s.label}</span><span class="widget-val">${fmt} ${priceChg(cur, prev)}</span></div>`;
+    } catch(e) {
+      return `<div class="widget-row"><span>${s.label}</span><span class="widget-muted">—</span></div>`;
+    }
+  }));
+  wBody('w-stocks', rows.join(''));
 }
 
-function submitTDKey() {
-  const inp = document.getElementById('td-key-input');
-  if (inp?.value.trim()) {
-    twelveDataKey = inp.value.trim();
-    localStorage.setItem('kanban_td_key', twelveDataKey);
-    fetchStocks();
-  }
-}
-
-function clearTDKey() {
-  twelveDataKey = '';
-  localStorage.removeItem('kanban_td_key');
-  fetchStocks();
-}
+function loadAlphaKey() {} // no-op, kept for boot compat
 
 /* Crypto — Kraken (free, no key, CORS enabled) */
 async function fetchCrypto() {
