@@ -2113,34 +2113,70 @@ async function fetchFX() {
   } catch { wBody('w-fx', '<span class="widget-muted">Unavailable</span>'); }
 }
 
-/* Markets — Yahoo Finance v7 quote endpoint */
-async function fetchStocks() {
-  try {
-    const url = 'https://query1.finance.yahoo.com/v7/finance/quote?symbols=%5EFTSE,%5EGSPC&lang=en-GB&region=GB';
-    const d   = await fetch(url).then(r => r.json());
-    const quotes = d.quoteResponse?.result || [];
-    if (!quotes.length) throw new Error('no data');
-    const html = quotes.map(q => {
-      const label = q.symbol === '^FTSE' ? 'FTSE 100' : 'S&P 500';
-      const price = q.regularMarketPrice;
-      const pct   = q.regularMarketChangePercent;
-      const fmt   = price.toLocaleString(undefined, { maximumFractionDigits: 0 });
-      return `<div class="widget-row"><span>${label}</span><span class="widget-val">${fmt} ${pctChg(pct)}</span></div>`;
-    }).join('');
-    wBody('w-stocks', html);
-  } catch { wBody('w-stocks', '<span class="widget-muted">Unavailable (CORS)</span>'); }
+/* Markets — Alpha Vantage (free key from alphavantage.co) */
+let alphaVantageKey = '';
+
+function loadAlphaKey() {
+  alphaVantageKey = localStorage.getItem('kanban_av_key') || '';
 }
 
-/* Crypto — CoinGecko (no key needed) */
+function saveAlphaKey(key) {
+  alphaVantageKey = key;
+  localStorage.setItem('kanban_av_key', key);
+}
+
+async function fetchStocks() {
+  if (!alphaVantageKey) {
+    wBody('w-stocks', `
+      <div class="widget-muted" style="margin-bottom:6px;line-height:1.4">Free key needed from <a href="https://alphavantage.co" target="_blank" style="color:var(--accent)">alphavantage.co</a></div>
+      <div style="display:flex;gap:4px">
+        <input id="av-key-input" placeholder="Paste key…" style="flex:1;font-size:.72rem;padding:4px 6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);outline:none" />
+        <button onclick="submitAlphaKey()" style="font-size:.72rem;padding:4px 8px;border-radius:6px;background:var(--accent);color:#fff;border:none;cursor:pointer">Save</button>
+      </div>`);
+    return;
+  }
+  const symbols = [
+    { sym: 'LSE:UKX', label: 'FTSE 100', av: 'UKX.LON' },
+    { sym: 'SPX',     label: 'S&P 500',  av: 'SPX'     },
+  ];
+  const rows = await Promise.all(symbols.map(async s => {
+    try {
+      const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${s.av}&apikey=${alphaVantageKey}`;
+      const d   = await fetch(url).then(r => r.json());
+      const q   = d['Global Quote'];
+      if (!q || !q['05. price']) throw new Error('no data');
+      const price = parseFloat(q['05. price']);
+      const pct   = parseFloat(q['10. change percent']);
+      const fmt   = price.toLocaleString(undefined, { maximumFractionDigits: 0 });
+      return `<div class="widget-row"><span>${s.label}</span><span class="widget-val">${fmt} ${pctChg(pct)}</span></div>`;
+    } catch { return `<div class="widget-row"><span>${s.label}</span><span class="widget-muted">—</span></div>`; }
+  }));
+  wBody('w-stocks', rows.join(''));
+}
+
+function submitAlphaKey() {
+  const inp = document.getElementById('av-key-input');
+  if (inp?.value.trim()) { saveAlphaKey(inp.value.trim()); fetchStocks(); }
+}
+
+/* Crypto — Kraken (free, no key, CORS enabled) */
 async function fetchCrypto() {
-  try {
-    const d = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana&vs_currencies=gbp&include_24hr_change=true').then(r => r.json());
-    const fmt = n => n >= 1000 ? n.toLocaleString(undefined, { maximumFractionDigits: 0 }) : n.toFixed(2);
-    wBody('w-crypto', `
-      <div class="widget-row"><span>BTC</span><span class="widget-val">£${fmt(d.bitcoin.gbp)} ${pctChg(d.bitcoin.gbp_24h_change)}</span></div>
-      <div class="widget-row"><span>ETH</span><span class="widget-val">£${fmt(d.ethereum.gbp)} ${pctChg(d.ethereum.gbp_24h_change)}</span></div>
-      <div class="widget-row"><span>SOL</span><span class="widget-val">£${fmt(d.solana.gbp)} ${pctChg(d.solana.gbp_24h_change)}</span></div>`);
-  } catch { wBody('w-crypto', '<span class="widget-muted">Unavailable</span>'); }
+  const fmt = n => n >= 1000 ? n.toLocaleString(undefined, { maximumFractionDigits: 0 }) : n.toFixed(2);
+  const fetchPair = async (pair, label) => {
+    try {
+      const d = await fetch(`https://api.kraken.com/0/public/Ticker?pair=${pair}`).then(r => r.json());
+      if (d.error?.length) return `<div class="widget-row"><span>${label}</span><span class="widget-muted">—</span></div>`;
+      const t = Object.values(d.result)[0];
+      const p = parseFloat(t.c[0]), o = parseFloat(t.o);
+      return `<div class="widget-row"><span>${label}</span><span class="widget-val">£${fmt(p)} ${priceChg(p, o)}</span></div>`;
+    } catch { return `<div class="widget-row"><span>${label}</span><span class="widget-muted">—</span></div>`; }
+  };
+  const rows = await Promise.all([
+    fetchPair('XXBTZGBP', 'BTC'),
+    fetchPair('XETHZGBP', 'ETH'),
+    fetchPair('SOLGBP',   'SOL'),
+  ]);
+  wBody('w-crypto', rows.join(''));
 }
 
 /* World clocks */
@@ -2177,6 +2213,7 @@ function closeWidgetSheet() {
 }
 
 function initWidgets() {
+  loadAlphaKey();
   widgetsOpen = localStorage.getItem('kanban_widgets_open') !== '0';
   if (!widgetsOpen) {
     document.getElementById('widget-panel').style.display = 'none';
