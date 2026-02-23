@@ -2076,27 +2076,58 @@ function pctChg(pct) {
 }
 function priceChg(now, prev) { return pctChg((now - prev) / prev * 100); }
 
-/* Weather — wttr.in (no key needed) */
+/* Weather — Open-Meteo (free, no key, reliable on mobile) */
+const WMO_DESC = {
+  0:'Clear',1:'Mainly clear',2:'Partly cloudy',3:'Overcast',
+  45:'Foggy',48:'Icy fog',
+  51:'Light drizzle',53:'Drizzle',55:'Heavy drizzle',
+  61:'Light rain',63:'Rain',65:'Heavy rain',
+  71:'Light snow',73:'Snow',75:'Heavy snow',
+  77:'Snow grains',80:'Showers',81:'Showers',82:'Heavy showers',
+  85:'Snow showers',86:'Heavy snow showers',
+  95:'Thunderstorm',96:'Thunderstorm+hail',99:'Thunderstorm+hail',
+};
 async function fetchWeather() {
   try {
-    let url = 'https://wttr.in/?format=j1';
-    if (navigator.geolocation) {
-      await new Promise(resolve => navigator.geolocation.getCurrentPosition(
-        pos => { url = `https://wttr.in/${pos.coords.latitude},${pos.coords.longitude}?format=j1`; resolve(); },
-        () => resolve(), { timeout: 4000 }
-      ));
+    let lat, lon, city = '';
+    // Try device geolocation first
+    try {
+      const pos = await new Promise((res, rej) =>
+        navigator.geolocation.getCurrentPosition(res, rej, { timeout: 5000 })
+      );
+      lat = pos.coords.latitude;
+      lon = pos.coords.longitude;
+    } catch {
+      // Fall back to IP geolocation
+      const ip = await fetch('https://ipapi.co/json/').then(r => r.json());
+      lat  = ip.latitude;
+      lon  = ip.longitude;
+      city = ip.city || '';
     }
-    const d   = await fetch(url).then(r => r.json());
-    const cur = d.current_condition[0];
-    const area = d.nearest_area[0].areaName[0].value;
+    // Fetch weather from Open-Meteo
+    const wx = await fetch(
+      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
+      `&current=temperature_2m,apparent_temperature,weathercode,windspeed_10m,relativehumidity_2m`
+    ).then(r => r.json());
+    const c = wx.current;
+    // Reverse geocode city name if we got coords from device
+    if (!city) {
+      try {
+        const geo = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`
+        ).then(r => r.json());
+        city = geo.address?.city || geo.address?.town || geo.address?.village || '';
+      } catch {}
+    }
+    const desc = WMO_DESC[c.weathercode] || '';
     wBody('w-weather', `
-      <div style="font-size:.85rem;font-weight:700;color:var(--text)">${cur.temp_C}°C
-        <span style="font-size:.7rem;font-weight:400;color:var(--muted)">${cur.weatherDesc[0].value}</span>
+      <div style="font-size:.85rem;font-weight:700;color:var(--text)">${Math.round(c.temperature_2m)}°C
+        <span style="font-size:.7rem;font-weight:400;color:var(--muted)">${desc}</span>
       </div>
-      <div class="widget-muted" style="margin-top:2px">Feels ${cur.FeelsLikeC}°C · ${area}</div>
+      <div class="widget-muted" style="margin-top:2px">Feels ${Math.round(c.apparent_temperature)}°C${city ? ' · ' + city : ''}</div>
       <div class="widget-row" style="margin-top:4px">
-        <span>💧 ${cur.humidity}%</span>
-        <span>💨 ${cur.windspeedKmph} km/h</span>
+        <span>💧 ${c.relativehumidity_2m}%</span>
+        <span>💨 ${Math.round(c.windspeed_10m)} km/h</span>
       </div>`);
   } catch { wBody('w-weather', '<span class="widget-muted">Unavailable</span>'); }
 }
