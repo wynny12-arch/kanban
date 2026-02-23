@@ -434,6 +434,26 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
 }
 .expand-btn:hover{color:var(--text);}
 
+/* ── Widget bottom sheet (mobile) ────────────────────────── */
+.widget-sheet-overlay{
+  display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:240;
+}
+.widget-sheet-overlay.open{display:block;}
+.widget-sheet{
+  position:fixed;bottom:0;left:0;right:0;
+  background:var(--surface);border-top:1px solid var(--border2);
+  border-radius:16px 16px 0 0;padding:16px;z-index:250;
+  max-height:80vh;overflow-y:auto;
+  transform:translateY(100%);transition:transform .3s ease;
+}
+.widget-sheet.open{transform:translateY(0);}
+.widget-sheet-title{
+  font-size:.9rem;font-weight:700;margin-bottom:12px;
+  display:flex;justify-content:space-between;align-items:center;
+}
+.widget-mobile-btn{display:none;}
+@media(max-width:700px){.widget-mobile-btn{display:flex;}}
+
 /* ── Empty state ─────────────────────────────────────────── */
 .empty-col{
   text-align:center;padding:20px 10px;color:var(--muted);font-size:.8rem;
@@ -578,6 +598,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
       <button class="filter-pill"        data-pri="none"  onclick="setPriFilter('none')">None</button>
     </div>
     <div class="topbar-actions">
+      <button class="icon-btn widget-mobile-btn" onclick="openWidgetSheet()">📊 Live</button>
       <button class="icon-btn" id="sort-toggle-btn" onclick="toggleSortMode()" title="Switch sort mode">⇅ Priority</button>
       <button class="icon-btn" onclick="openModal(activeCol())">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -739,6 +760,16 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
       <button class="btn-primary" id="storage-connect-btn" onclick="storageConnect()">Connect</button>
     </div>
   </div>
+</div>
+
+<!-- WIDGET SHEET (mobile) -->
+<div class="widget-sheet-overlay" id="widget-sheet-overlay" onclick="closeWidgetSheet()"></div>
+<div class="widget-sheet" id="widget-sheet">
+  <div class="widget-sheet-title">
+    📊 Live Data
+    <button class="btn-cancel" onclick="closeWidgetSheet()" style="padding:4px 10px;font-size:.8rem">✕</button>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:8px" id="widget-sheet-body"></div>
 </div>
 
 <!-- LIGHTBOX -->
@@ -2132,6 +2163,23 @@ function updateClocks() {
     return `<div class="widget-row"><span>${c.label}</span><span class="widget-val">${t}</span></div>`;
   }).join('');
   wBody('w-clocks', html);
+}
+
+function openWidgetSheet() {
+  // Copy current widget content into the sheet
+  const ids = ['w-weather','w-fx','w-stocks','w-clocks','w-crypto'];
+  const body = document.getElementById('widget-sheet-body');
+  body.innerHTML = ids.map(id => {
+    const card = document.getElementById(id);
+    return card ? card.outerHTML : '';
+  }).join('');
+  document.getElementById('widget-sheet').classList.add('open');
+  document.getElementById('widget-sheet-overlay').classList.add('open');
+}
+
+function closeWidgetSheet() {
+  document.getElementById('widget-sheet').classList.remove('open');
+  document.getElementById('widget-sheet-overlay').classList.remove('open');
 }
 
 function initWidgets() {
