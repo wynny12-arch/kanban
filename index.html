@@ -57,10 +57,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
 
 /* ── Sidebar ─────────────────────────────────────────────── */
 .sidebar{
-  width:220px;min-height:100vh;background:var(--surface);
+  width:220px;height:100vh;background:var(--surface);
   border-right:1px solid var(--border);
   display:flex;flex-direction:column;padding:20px 12px;
   flex-shrink:0;transition:background .2s,border-color .2s;
+  overflow-y:auto;
 }
 .sidebar-logo{
   font-size:1rem;font-weight:700;color:var(--text);
@@ -457,6 +458,32 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
 }
 .bin-id-box strong{display:block;font-size:.7rem;color:var(--muted);margin-bottom:3px;text-transform:uppercase;letter-spacing:.5px;}
 
+/* ── Widgets ─────────────────────────────────────────────── */
+.widget-section{margin-top:12px;padding-top:12px;border-top:1px solid var(--border);}
+.widget-section-header{
+  display:flex;align-items:center;justify-content:space-between;
+  font-size:.7rem;font-weight:600;text-transform:uppercase;letter-spacing:.8px;
+  color:var(--muted);padding:0 2px;margin-bottom:8px;cursor:pointer;user-select:none;
+}
+.widget-section-header:hover{color:var(--text2);}
+.widget-panel{display:flex;flex-direction:column;gap:6px;}
+.widget-card{
+  background:var(--surface2);border:1px solid var(--border);
+  border-radius:8px;padding:8px 10px;font-size:.72rem;
+}
+.widget-title{
+  font-size:.65rem;font-weight:600;text-transform:uppercase;
+  letter-spacing:.6px;color:var(--muted);margin-bottom:5px;
+}
+.widget-row{
+  display:flex;align-items:center;justify-content:space-between;
+  color:var(--text2);padding:1px 0;gap:4px;
+}
+.widget-val{font-weight:600;color:var(--text);white-space:nowrap;}
+.widget-up  {color:var(--done-c);}
+.widget-down{color:var(--p-high);}
+.widget-muted{color:var(--muted);}
+
 /* ── Scrollbar ───────────────────────────────────────────── */
 ::-webkit-scrollbar{width:6px;height:6px;}
 ::-webkit-scrollbar-track{background:transparent;}
@@ -489,6 +516,35 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
   <div class="sidebar-section">Boards</div>
   <div class="board-list" id="board-list"></div>
   <button class="add-board-btn" onclick="addBoard()">+ New board</button>
+  <!-- WIDGETS -->
+  <div class="widget-section">
+    <div class="widget-section-header" onclick="toggleWidgets()">
+      Live Data <span id="widget-toggle-icon">▲</span>
+    </div>
+    <div class="widget-panel" id="widget-panel">
+      <div class="widget-card" id="w-weather">
+        <div class="widget-title">🌤 Weather</div>
+        <div class="widget-body widget-muted">Loading…</div>
+      </div>
+      <div class="widget-card" id="w-fx">
+        <div class="widget-title">💱 vs GBP</div>
+        <div class="widget-body widget-muted">Loading…</div>
+      </div>
+      <div class="widget-card" id="w-stocks">
+        <div class="widget-title">📈 Markets</div>
+        <div class="widget-body widget-muted">Loading…</div>
+      </div>
+      <div class="widget-card" id="w-clocks">
+        <div class="widget-title">🕐 World Clocks</div>
+        <div class="widget-body widget-muted">Loading…</div>
+      </div>
+      <div class="widget-card" id="w-crypto">
+        <div class="widget-title">₿ Crypto (GBP)</div>
+        <div class="widget-body widget-muted">Loading…</div>
+      </div>
+    </div>
+  </div>
+
   <div class="sidebar-footer">
     <button class="icon-btn" style="width:100%;justify-content:center;margin-bottom:6px" onclick="openSyncModal()">
       <span class="sync-dot off" id="sync-dot"></span>
@@ -1966,6 +2022,136 @@ async function storageConnect() {
   }
 }
 
+/* ─── Widgets ────────────────────────────────────────────── */
+let widgetsOpen = true;
+
+function toggleWidgets() {
+  widgetsOpen = !widgetsOpen;
+  document.getElementById('widget-panel').style.display = widgetsOpen ? '' : 'none';
+  document.getElementById('widget-toggle-icon').textContent = widgetsOpen ? '▲' : '▼';
+  localStorage.setItem('kanban_widgets_open', widgetsOpen ? '1' : '0');
+}
+
+function wBody(id, html) {
+  const el = document.querySelector(`#${id} .widget-body`);
+  if (el) el.innerHTML = html;
+}
+
+function pctChg(pct) {
+  if (pct == null || isNaN(pct)) return '';
+  const cls  = pct >= 0 ? 'widget-up' : 'widget-down';
+  const sign = pct >= 0 ? '+' : '';
+  return `<span class="${cls}">${sign}${pct.toFixed(2)}%</span>`;
+}
+function priceChg(now, prev) { return pctChg((now - prev) / prev * 100); }
+
+/* Weather — wttr.in (no key needed) */
+async function fetchWeather() {
+  try {
+    let url = 'https://wttr.in/?format=j1';
+    if (navigator.geolocation) {
+      await new Promise(resolve => navigator.geolocation.getCurrentPosition(
+        pos => { url = `https://wttr.in/${pos.coords.latitude},${pos.coords.longitude}?format=j1`; resolve(); },
+        () => resolve(), { timeout: 4000 }
+      ));
+    }
+    const d   = await fetch(url).then(r => r.json());
+    const cur = d.current_condition[0];
+    const area = d.nearest_area[0].areaName[0].value;
+    wBody('w-weather', `
+      <div style="font-size:.85rem;font-weight:700;color:var(--text)">${cur.temp_C}°C
+        <span style="font-size:.7rem;font-weight:400;color:var(--muted)">${cur.weatherDesc[0].value}</span>
+      </div>
+      <div class="widget-muted" style="margin-top:2px">Feels ${cur.FeelsLikeC}°C · ${area}</div>
+      <div class="widget-row" style="margin-top:4px">
+        <span>💧 ${cur.humidity}%</span>
+        <span>💨 ${cur.windspeedKmph} km/h</span>
+      </div>`);
+  } catch { wBody('w-weather', '<span class="widget-muted">Unavailable</span>'); }
+}
+
+/* Exchange rates — frankfurter.app (no key needed) */
+async function fetchFX() {
+  try {
+    const d = await fetch('https://api.frankfurter.app/latest?from=GBP&to=USD,EUR,TRY').then(r => r.json());
+    const r = d.rates;
+    wBody('w-fx', `
+      <div class="widget-row"><span>USD</span><span class="widget-val">${r.USD?.toFixed(4) ?? '—'}</span></div>
+      <div class="widget-row"><span>EUR</span><span class="widget-val">${r.EUR?.toFixed(4) ?? '—'}</span></div>
+      <div class="widget-row"><span>TRY</span><span class="widget-val">${r.TRY?.toFixed(2) ?? '—'}</span></div>`);
+  } catch { wBody('w-fx', '<span class="widget-muted">Unavailable</span>'); }
+}
+
+/* Markets — Yahoo Finance unofficial (no key needed) */
+async function fetchStocks() {
+  const tickers = [
+    { sym: '%5EFTSE', label: 'FTSE 100' },
+    { sym: '%5EGSPC', label: 'S&P 500'  },
+  ];
+  try {
+    const results = await Promise.all(tickers.map(t =>
+      fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${t.sym}?interval=1d&range=1d`)
+        .then(r => r.json()).catch(() => null)
+    ));
+    const html = results.map((d, i) => {
+      try {
+        const meta  = d.chart.result[0].meta;
+        const price = meta.regularMarketPrice;
+        const prev  = meta.previousClose || meta.chartPreviousClose;
+        const fmt   = price.toLocaleString(undefined, { maximumFractionDigits: 0 });
+        return `<div class="widget-row"><span>${tickers[i].label}</span><span class="widget-val">${fmt} ${priceChg(price, prev)}</span></div>`;
+      } catch { return `<div class="widget-row"><span>${tickers[i].label}</span><span class="widget-muted">—</span></div>`; }
+    }).join('');
+    wBody('w-stocks', html || '<span class="widget-muted">Unavailable</span>');
+  } catch { wBody('w-stocks', '<span class="widget-muted">Unavailable</span>'); }
+}
+
+/* Crypto — CoinGecko (no key needed) */
+async function fetchCrypto() {
+  try {
+    const d = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana&vs_currencies=gbp&include_24hr_change=true').then(r => r.json());
+    const fmt = n => n >= 1000 ? n.toLocaleString(undefined, { maximumFractionDigits: 0 }) : n.toFixed(2);
+    wBody('w-crypto', `
+      <div class="widget-row"><span>BTC</span><span class="widget-val">£${fmt(d.bitcoin.gbp)} ${pctChg(d.bitcoin.gbp_24h_change)}</span></div>
+      <div class="widget-row"><span>ETH</span><span class="widget-val">£${fmt(d.ethereum.gbp)} ${pctChg(d.ethereum.gbp_24h_change)}</span></div>
+      <div class="widget-row"><span>SOL</span><span class="widget-val">£${fmt(d.solana.gbp)} ${pctChg(d.solana.gbp_24h_change)}</span></div>`);
+  } catch { wBody('w-crypto', '<span class="widget-muted">Unavailable</span>'); }
+}
+
+/* World clocks */
+const WORLD_CLOCKS = [
+  { label: 'London',   tz: 'Europe/London'   },
+  { label: 'New York', tz: 'America/New_York' },
+  { label: 'Istanbul', tz: 'Europe/Istanbul'  },
+  { label: 'Dubai',    tz: 'Asia/Dubai'       },
+];
+function updateClocks() {
+  const now  = new Date();
+  const html = WORLD_CLOCKS.map(c => {
+    const t = now.toLocaleTimeString('en-GB', { timeZone: c.tz, hour: '2-digit', minute: '2-digit' });
+    return `<div class="widget-row"><span>${c.label}</span><span class="widget-val">${t}</span></div>`;
+  }).join('');
+  wBody('w-clocks', html);
+}
+
+function initWidgets() {
+  widgetsOpen = localStorage.getItem('kanban_widgets_open') !== '0';
+  if (!widgetsOpen) {
+    document.getElementById('widget-panel').style.display = 'none';
+    document.getElementById('widget-toggle-icon').textContent = '▼';
+  }
+  fetchWeather();
+  fetchFX();
+  fetchStocks();
+  fetchCrypto();
+  updateClocks();
+  setInterval(fetchWeather,  10 * 60 * 1000); // 10 min
+  setInterval(fetchFX,       60 * 60 * 1000); // 1 hour
+  setInterval(fetchStocks,    2 * 60 * 1000); // 2 min
+  setInterval(fetchCrypto,    5 * 60 * 1000); // 5 min
+  setInterval(updateClocks,           1000);  // 1 sec
+}
+
 /* ─── Boot ───────────────────────────────────────────────── */
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => navigator.serviceWorker.register('/kanban/sw.js'));
@@ -1977,6 +2163,7 @@ loadStorageConfig();
 loadSortMode();
 render();
 syncPull();
+initWidgets();
 </script>
 </body>
 </html>
