@@ -2116,12 +2116,12 @@ async function fetchFX() {
 /* Markets — Yahoo Finance via allorigins CORS proxy (no key needed) */
 async function fetchStocks() {
   const syms = [
-    { sym: '%5EFTSE', label: 'FTSE 100' },
-    { sym: '%5EGSPC', label: 'S&P 500'  },
+    { sym: '^FTSE', label: 'FTSE 100' },
+    { sym: '^GSPC', label: 'S&P 500'  },
   ];
   const rows = await Promise.all(syms.map(async s => {
     try {
-      const yhUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${s.sym}?interval=1d&range=5d`;
+      const yhUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(s.sym)}?interval=1d&range=5d`;
       const proxy = `https://api.allorigins.win/get?url=${encodeURIComponent(yhUrl)}`;
       const resp  = await fetch(proxy).then(r => r.json());
       const chart = JSON.parse(resp.contents).chart.result[0];
