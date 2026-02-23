@@ -2113,40 +2113,33 @@ async function fetchFX() {
   } catch { wBody('w-fx', '<span class="widget-muted">Unavailable</span>'); }
 }
 
-/* Markets — Alpha Vantage (free key from alphavantage.co) */
-let alphaVantageKey = '';
+/* Markets — Twelve Data (free key from twelvedata.com, 800 calls/day) */
+let twelveDataKey = '';
 
-function loadAlphaKey() {
-  alphaVantageKey = localStorage.getItem('kanban_av_key') || '';
-}
-
-function saveAlphaKey(key) {
-  alphaVantageKey = key;
-  localStorage.setItem('kanban_av_key', key);
+function loadAlphaKey() { // kept for boot compat
+  twelveDataKey = localStorage.getItem('kanban_td_key') || '';
 }
 
 async function fetchStocks() {
-  if (!alphaVantageKey) {
+  if (!twelveDataKey) {
     wBody('w-stocks', `
-      <div class="widget-muted" style="margin-bottom:6px;line-height:1.4">Free key needed from <a href="https://alphavantage.co" target="_blank" style="color:var(--accent)">alphavantage.co</a></div>
+      <div class="widget-muted" style="margin-bottom:6px;line-height:1.4">Free key needed from <a href="https://twelvedata.com" target="_blank" style="color:var(--accent)">twelvedata.com</a></div>
       <div style="display:flex;gap:4px">
-        <input id="av-key-input" placeholder="Paste key…" style="flex:1;font-size:.72rem;padding:4px 6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);outline:none" />
-        <button onclick="submitAlphaKey()" style="font-size:.72rem;padding:4px 8px;border-radius:6px;background:var(--accent);color:#fff;border:none;cursor:pointer">Save</button>
+        <input id="td-key-input" placeholder="Paste key…" style="flex:1;font-size:.72rem;padding:4px 6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);outline:none"/>
+        <button onclick="submitTDKey()" style="font-size:.72rem;padding:4px 8px;border-radius:6px;background:var(--accent);color:#fff;border:none;cursor:pointer">Save</button>
       </div>`);
     return;
   }
   const symbols = [
-    { sym: 'LSE:UKX', label: 'FTSE 100', av: 'UKX.LON' },
-    { sym: 'SPX',     label: 'S&P 500',  av: 'SPX'     },
+    { sym: 'FTSE', label: 'FTSE 100' },
+    { sym: 'SPX',  label: 'S&P 500'  },
   ];
   const rows = await Promise.all(symbols.map(async s => {
     try {
-      const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${s.av}&apikey=${alphaVantageKey}`;
-      const d   = await fetch(url).then(r => r.json());
-      const q   = d['Global Quote'];
-      if (!q || !q['05. price']) throw new Error('no data');
-      const price = parseFloat(q['05. price']);
-      const pct   = parseFloat(q['10. change percent']);
+      const d = await fetch(`https://api.twelvedata.com/quote?symbol=${s.sym}&apikey=${twelveDataKey}`).then(r => r.json());
+      if (d.status === 'error' || !d.close) throw new Error('no data');
+      const price = parseFloat(d.close);
+      const pct   = parseFloat(d.percent_change);
       const fmt   = price.toLocaleString(undefined, { maximumFractionDigits: 0 });
       return `<div class="widget-row"><span>${s.label}</span><span class="widget-val">${fmt} ${pctChg(pct)}</span></div>`;
     } catch { return `<div class="widget-row"><span>${s.label}</span><span class="widget-muted">—</span></div>`; }
@@ -2154,9 +2147,13 @@ async function fetchStocks() {
   wBody('w-stocks', rows.join(''));
 }
 
-function submitAlphaKey() {
-  const inp = document.getElementById('av-key-input');
-  if (inp?.value.trim()) { saveAlphaKey(inp.value.trim()); fetchStocks(); }
+function submitTDKey() {
+  const inp = document.getElementById('td-key-input');
+  if (inp?.value.trim()) {
+    twelveDataKey = inp.value.trim();
+    localStorage.setItem('kanban_td_key', twelveDataKey);
+    fetchStocks();
+  }
 }
 
 /* Crypto — Kraken (free, no key, CORS enabled) */
@@ -2226,7 +2223,7 @@ function initWidgets() {
   updateClocks();
   setInterval(fetchWeather,  10 * 60 * 1000); // 10 min
   setInterval(fetchFX,       60 * 60 * 1000); // 1 hour
-  setInterval(fetchStocks,    2 * 60 * 1000); // 2 min
+  setInterval(fetchStocks,   10 * 60 * 1000); // 10 min
   setInterval(fetchCrypto,    5 * 60 * 1000); // 5 min
   setInterval(updateClocks,           1000);  // 1 sec
 }
