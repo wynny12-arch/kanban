@@ -993,6 +993,8 @@ function buildCard(task) {
     document.querySelectorAll('.cards').forEach(c => c.classList.remove('drag-over'));
   });
 
+  setupTouchDrag(card, task.id);
+
   // File / email drop directly onto card
   card.addEventListener('dragover', e => {
     if ([...e.dataTransfer.types].includes('Files')) {
@@ -1612,6 +1614,139 @@ function moveDown(id) {
   const curr = colTasks[pos].i, next = colTasks[pos+1].i;
   [b.tasks[curr], b.tasks[next]] = [b.tasks[next], b.tasks[curr]];
   save(); render();
+}
+
+/* ─── Touch drag-to-reorder ─────────────────────────────── */
+let tdState = null;
+let tdGhost = null;
+
+function setupTouchDrag(card, taskId) {
+  card.addEventListener('touchstart', e => {
+    if (e.touches.length !== 1) return;
+    const t = e.touches[0];
+    tdState = {
+      card, taskId,
+      startX: t.clientX, startY: t.clientY,
+      isDragging: false, offX: 0, offY: 0,
+      timer: setTimeout(() => tdBeginDrag(t), 350)
+    };
+  }, { passive: true });
+
+  card.addEventListener('touchmove', e => {
+    if (!tdState || tdState.card !== card) return;
+    const t = e.touches[0];
+    if (!tdState.isDragging) {
+      if (Math.hypot(t.clientX - tdState.startX, t.clientY - tdState.startY) > 8) {
+        clearTimeout(tdState.timer); tdState = null;
+      }
+      return;
+    }
+    e.preventDefault();
+    tdMoveGhost(t);
+    tdShowIndicator(t);
+  }, { passive: false });
+
+  card.addEventListener('touchend', e => {
+    if (!tdState || tdState.card !== card) return;
+    clearTimeout(tdState.timer);
+    if (tdState.isDragging) { tdFinishDrop(e.changedTouches[0]); tdCleanup(); }
+    tdState = null;
+  });
+  card.addEventListener('touchcancel', () => {
+    if (!tdState || tdState.card !== card) return;
+    clearTimeout(tdState.timer);
+    if (tdState.isDragging) tdCleanup();
+    tdState = null;
+  });
+}
+
+function tdBeginDrag(touch) {
+  if (!tdState) return;
+  tdState.isDragging = true;
+  const card = tdState.card;
+  const rect = card.getBoundingClientRect();
+  tdState.offX = touch.clientX - rect.left;
+  tdState.offY = touch.clientY - rect.top;
+  tdGhost = card.cloneNode(true);
+  Object.assign(tdGhost.style, {
+    position:'fixed', width:rect.width+'px',
+    left:(touch.clientX - tdState.offX)+'px', top:(touch.clientY - tdState.offY)+'px',
+    opacity:'0.88', zIndex:'9999', pointerEvents:'none',
+    boxShadow:'0 12px 40px rgba(0,0,0,0.5)',
+    transform:'rotate(2deg) scale(1.04)', transition:'none',
+    borderRadius: getComputedStyle(card).borderRadius,
+  });
+  document.body.appendChild(tdGhost);
+  card.style.opacity = '0.25';
+  if (navigator.vibrate) navigator.vibrate(30);
+}
+
+function tdMoveGhost(touch) {
+  if (!tdGhost || !tdState) return;
+  tdGhost.style.left = (touch.clientX - tdState.offX) + 'px';
+  tdGhost.style.top  = (touch.clientY - tdState.offY) + 'px';
+}
+
+function tdElAt(x, y) {
+  // Hide ghost so it doesn't intercept hit-test
+  if (tdGhost) tdGhost.style.visibility = 'hidden';
+  const el = document.elementFromPoint(x, y);
+  if (tdGhost) tdGhost.style.visibility = '';
+  return el;
+}
+
+function tdShowIndicator(touch) {
+  document.querySelectorAll('.td-indicator').forEach(e => e.remove());
+  const el = tdElAt(touch.clientX, touch.clientY);
+  const targetCard = el?.closest('.card');
+  if (targetCard && tdState && targetCard !== tdState.card) {
+    const rect   = targetCard.getBoundingClientRect();
+    const before = touch.clientY < rect.top + rect.height / 2;
+    const line   = document.createElement('div');
+    line.className = 'td-indicator';
+    Object.assign(line.style, {
+      position:'fixed', left:rect.left+'px',
+      top:(before ? rect.top - 3 : rect.bottom + 1)+'px',
+      width:rect.width+'px', height:'3px',
+      background:'var(--accent)', borderRadius:'2px',
+      zIndex:'9998', pointerEvents:'none',
+    });
+    document.body.appendChild(line);
+  }
+}
+
+function tdFinishDrop(touch) {
+  if (!tdState) return;
+  // Compute drop target fresh at release position
+  const el         = tdElAt(touch.clientX, touch.clientY);
+  const targetCard = el?.closest('.card');
+  const targetZone = el?.closest('.cards');
+  const b          = board();
+  const task       = b.tasks.find(t => t.id === tdState.taskId);
+  if (!task) return;
+
+  if (targetCard && targetCard !== tdState.card) {
+    const target = b.tasks.find(t => t.id === targetCard.dataset.id);
+    if (!target) return;
+    const rect   = targetCard.getBoundingClientRect();
+    const before = touch.clientY < rect.top + rect.height / 2;
+    const fromIdx = b.tasks.indexOf(task);
+    b.tasks.splice(fromIdx, 1);
+    const toIdx = b.tasks.indexOf(target);
+    task.col = target.col;
+    b.tasks.splice(before ? toIdx : toIdx + 1, 0, task);
+    if (sortMode !== 'manual') { sortMode = 'manual'; localStorage.setItem('kanban_sort_mode', sortMode); updateSortBtn(); }
+    save(); render();
+  } else if (targetZone) {
+    const col = targetZone.id.replace('cards-', '');
+    if (task.col !== col) { task.col = col; save(); render(); }
+  }
+}
+
+function tdCleanup() {
+  if (tdGhost) { tdGhost.remove(); tdGhost = null; }
+  if (tdState?.card) tdState.card.style.opacity = '';
+  document.querySelectorAll('.td-indicator').forEach(e => e.remove());
 }
 
 function toggleSortMode() {
