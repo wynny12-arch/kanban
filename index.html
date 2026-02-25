@@ -2320,25 +2320,30 @@ async function fetchStocks() {
     { sym: '^GSPC', label: 'S&P 500'  },
     { sym: 'NVDA',  label: 'NVIDIA'   },
   ];
-  try {
-    // Batch all symbols in one proxy request
-    const yhUrl = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${syms.map(s => encodeURIComponent(s.sym)).join(',')}`;
-    const proxy  = `https://api.allorigins.win/get?url=${encodeURIComponent(yhUrl)}`;
-    const resp   = await fetch(proxy).then(r => r.json());
-    const results = JSON.parse(resp.contents)?.quoteResponse?.result;
-    if (!results?.length) throw new Error('no data');
-    const bySymbol = Object.fromEntries(results.map(r => [r.symbol, r]));
-    const rows = syms.map(s => {
-      const q = bySymbol[s.sym];
-      if (!q?.regularMarketPrice) return `<div class="widget-row"><span>${s.label}</span><span class="widget-muted">—</span></div>`;
-      const cur  = q.regularMarketPrice;
-      const prev = q.regularMarketPreviousClose;
-      const fmt  = cur >= 1000 ? cur.toLocaleString(undefined, { maximumFractionDigits: 0 }) : cur.toFixed(2);
-      return `<div class="widget-row"><span>${s.label}</span><span class="widget-val">${fmt} ${priceChg(cur, prev)}</span></div>`;
-    });
-    wBody('w-stocks', rows.join(''));
-  } catch {
-    wBody('w-stocks', '<span class="widget-muted">Unavailable</span>');
+  // Render placeholder rows immediately, fill each as data arrives
+  wBody('w-stocks', syms.map(s =>
+    `<div class="widget-row" id="mkt-${s.sym.replace('^','')}"><span>${s.label}</span><span class="widget-muted">…</span></div>`
+  ).join(''));
+
+  for (let i = 0; i < syms.length; i++) {
+    if (i > 0) await new Promise(r => setTimeout(r, 1500)); // stagger to avoid proxy rate-limit
+    const s   = syms[i];
+    const row = document.getElementById(`mkt-${s.sym.replace('^','')}`);
+    if (!row) continue;
+    try {
+      const yhUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(s.sym)}?interval=1d&range=5d`;
+      const proxy  = `https://api.allorigins.win/get?url=${encodeURIComponent(yhUrl)}`;
+      const resp   = await fetch(proxy).then(r => r.json());
+      const result = JSON.parse(resp.contents)?.chart?.result;
+      if (!result?.length) throw new Error('no data');
+      const closes = result[0].indicators.quote[0].close.filter(v => v != null);
+      const cur    = closes[closes.length - 1];
+      const prev   = closes[closes.length - 2];
+      const fmt    = cur >= 1000 ? cur.toLocaleString(undefined, { maximumFractionDigits: 0 }) : cur.toFixed(2);
+      row.innerHTML = `<span>${s.label}</span><span class="widget-val">${fmt} ${priceChg(cur, prev)}</span>`;
+    } catch {
+      row.innerHTML = `<span>${s.label}</span><span class="widget-muted">—</span>`;
+    }
   }
 }
 
