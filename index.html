@@ -1715,21 +1715,41 @@ function tdShowIndicator(touch) {
   }
 }
 
+function tdNearestCard(zone, touchY, excludeCard) {
+  // If released in the gap between cards, find the closest card by distance
+  const cards = [...zone.querySelectorAll('.card')].filter(c => c !== excludeCard);
+  let best = null, bestDist = Infinity;
+  for (const c of cards) {
+    const r    = c.getBoundingClientRect();
+    const dist = Math.max(r.top - touchY, touchY - r.bottom, 0); // 0 if inside
+    if (dist < bestDist) { bestDist = dist; best = c; }
+  }
+  return bestDist < 80 ? best : null; // only snap if reasonably close
+}
+
 function tdFinishDrop(touch) {
   if (!tdState) return;
-  // Compute drop target fresh at release position
-  const el         = tdElAt(touch.clientX, touch.clientY);
-  const targetCard = el?.closest('.card');
-  const targetZone = el?.closest('.cards');
-  const b          = board();
-  const task       = b.tasks.find(t => t.id === tdState.taskId);
+  const el   = tdElAt(touch.clientX, touch.clientY);
+  const b    = board();
+  const task = b.tasks.find(t => t.id === tdState.taskId);
   if (!task) return;
+
+  let targetCard = el?.closest('.card');
+  const targetZone = el?.closest('.cards') || tdElAt(touch.clientX, touch.clientY)?.closest('.column');
+
+  // If finger landed in gap between cards, snap to nearest card
+  if ((!targetCard || targetCard === tdState.card) && targetZone) {
+    const zone = targetZone.classList.contains('cards')
+      ? targetZone
+      : targetZone.querySelector('.cards');
+    if (zone) targetCard = tdNearestCard(zone, touch.clientY, tdState.card);
+  }
 
   if (targetCard && targetCard !== tdState.card) {
     const target = b.tasks.find(t => t.id === targetCard.dataset.id);
     if (!target) return;
-    const rect   = targetCard.getBoundingClientRect();
-    const before = touch.clientY < rect.top + rect.height / 2;
+    const rect    = targetCard.getBoundingClientRect();
+    const before  = touch.clientY < rect.top + rect.height / 2;
     const fromIdx = b.tasks.indexOf(task);
     b.tasks.splice(fromIdx, 1);
     const toIdx = b.tasks.indexOf(target);
@@ -1738,8 +1758,9 @@ function tdFinishDrop(touch) {
     if (sortMode !== 'manual') { sortMode = 'manual'; localStorage.setItem('kanban_sort_mode', sortMode); updateSortBtn(); }
     save(); render();
   } else if (targetZone) {
-    const col = targetZone.id.replace('cards-', '');
-    if (task.col !== col) { task.col = col; save(); render(); }
+    const zone = targetZone.classList.contains('cards') ? targetZone : targetZone.querySelector('.cards');
+    const col  = zone ? zone.id.replace('cards-', '') : null;
+    if (col && task.col !== col) { task.col = col; save(); render(); }
   }
 }
 
