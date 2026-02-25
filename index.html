@@ -934,7 +934,7 @@ function buildCard(task) {
   const card = document.createElement('div');
   card.className = 'card';
   card.dataset.id = task.id;
-  card.draggable = true;
+  card.draggable = !('ontouchstart' in window); // touch devices use touch drag instead
 
   const colIdx = COLS.indexOf(task.col);
   const pri    = task.priority || 'none';
