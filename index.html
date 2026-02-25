@@ -2313,28 +2313,39 @@ async function fetchFX() {
   } catch { wBody('w-fx', '<span class="widget-muted">Unavailable</span>'); }
 }
 
-/* Markets — Yahoo Finance via allorigins CORS proxy (no key needed) */
+/* Markets — Yahoo Finance with dual CORS proxy fallback */
+async function yhFetch(sym) {
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=5d`;
+  // Try corsproxy.io first (returns raw JSON)
+  try {
+    const d = await fetch(`https://corsproxy.io/?url=${encodeURIComponent(url)}`,
+      { signal: AbortSignal.timeout(6000) }).then(r => r.json());
+    if (d?.chart?.result?.length) return d;
+  } catch {}
+  // Fallback to allorigins (wraps response in {contents:"..."})
+  const d = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
+    { signal: AbortSignal.timeout(6000) }).then(r => r.json());
+  return JSON.parse(d.contents);
+}
+
 async function fetchStocks() {
   const syms = [
     { sym: '^FTSE', label: 'FTSE 100' },
     { sym: '^GSPC', label: 'S&P 500'  },
     { sym: 'NVDA',  label: 'NVIDIA'   },
   ];
-  // Render placeholder rows immediately, fill each as data arrives
   wBody('w-stocks', syms.map(s =>
     `<div class="widget-row" id="mkt-${s.sym.replace('^','')}"><span>${s.label}</span><span class="widget-muted">…</span></div>`
   ).join(''));
 
   for (let i = 0; i < syms.length; i++) {
-    if (i > 0) await new Promise(r => setTimeout(r, 1500)); // stagger to avoid proxy rate-limit
+    if (i > 0) await new Promise(r => setTimeout(r, 800));
     const s   = syms[i];
     const row = document.getElementById(`mkt-${s.sym.replace('^','')}`);
     if (!row) continue;
     try {
-      const yhUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(s.sym)}?interval=1d&range=5d`;
-      const proxy  = `https://api.allorigins.win/get?url=${encodeURIComponent(yhUrl)}`;
-      const resp   = await fetch(proxy).then(r => r.json());
-      const result = JSON.parse(resp.contents)?.chart?.result;
+      const data   = await yhFetch(s.sym);
+      const result = data?.chart?.result;
       if (!result?.length) throw new Error('no data');
       const closes = result[0].indicators.quote[0].close.filter(v => v != null);
       const cur    = closes[closes.length - 1];
