@@ -1041,6 +1041,11 @@ function buildCard(task) {
       </div>
     </div>`;
 
+  card.addEventListener('click', e => {
+    if (e.target.closest('button') || e.target.closest('a')) return;
+    openModalEdit(task.id);
+  });
+
   card.addEventListener('dragstart', e => {
     dragId = task.id; card.classList.add('dragging');
     e.dataTransfer.effectAllowed = 'move';
