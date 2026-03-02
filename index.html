@@ -1253,6 +1253,7 @@ async function saveModal() {
     if (task) Object.assign(task, { title, desc, priority, due, tags, attachments });
   } else {
     b.tasks.unshift({ id: taskId, col:modalCol, title, desc, priority, due, tags, attachments });
+    if (sortMode !== 'manual') { sortMode = 'manual'; localStorage.setItem('kanban_sort_mode', sortMode); updateSortBtn(); }
   }
   save(); render(); closeModal();
 }
