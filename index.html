@@ -791,6 +791,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
     </div>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeStorageModal()">Close</button>
+      <button class="btn-cancel" onclick="saveStorageDraft()">Save</button>
       <button class="btn-primary" id="storage-connect-btn" onclick="storageConnect()">Connect</button>
     </div>
   </div>
@@ -2252,11 +2253,20 @@ function updateStorageDot(connected) {
 
 /* ── Storage modal ───────────────────────────────────────── */
 function openStorageModal() {
-  document.getElementById('storage-url').value = storageConfig.url     || '';
-  document.getElementById('storage-key').value = storageConfig.anonKey || '';
+  const draft = JSON.parse(localStorage.getItem('kanban_storage_draft')||'{}');
+  document.getElementById('storage-url').value = storageConfig.url     || draft.url     || '';
+  document.getElementById('storage-key').value = storageConfig.anonKey || draft.anonKey || '';
   storageMsg('');
   if (supEnabled()) storageMsg('File storage is connected.', 'ok');
+  else if (draft.url || draft.anonKey) storageMsg('Draft saved — add the remaining field and Connect.');
   document.getElementById('storage-overlay').classList.add('open');
+}
+
+function saveStorageDraft() {
+  const url = document.getElementById('storage-url').value.trim();
+  const key = document.getElementById('storage-key').value.trim();
+  localStorage.setItem('kanban_storage_draft', JSON.stringify({ url, anonKey: key }));
+  storageMsg('Saved — close and reopen to continue.', 'ok');
 }
 
 function closeStorageModal() {
@@ -2343,6 +2353,25 @@ function saveAiKey() {
   aiMsg(key ? 'API key saved.' : 'API key cleared.', key ? 'ok' : '');
 }
 
+async function callClaudeAPI(apiKey, body) {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify(body)
+  });
+  if (res.status === 529) throw Object.assign(new Error('overloaded'), { status: 529 });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.error?.message || `API error ${res.status}`);
+  }
+  return res.json();
+}
+
 async function parseNL() {
   const text = document.getElementById('nl-input').value.trim();
   if (!text) return;
@@ -2356,29 +2385,28 @@ async function parseNL() {
   btn.disabled = true; btn.textContent = 'Parsing…';
   msg.textContent = ''; msg.style.color = 'var(--muted)';
   const today = new Date().toISOString().split('T')[0];
+  const body = {
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 300,
+    messages: [{
+      role: 'user',
+      content: `Parse this task into structured fields. Return ONLY valid JSON, no explanation, no markdown fences.\n\nInput: "${text}"\nToday: ${today}\n\nReturn exactly: {"title":"...","description":"...","priority":"high|med|low|none","due":"YYYY-MM-DD or empty","tags":["..."]}\n\nRules:\n- title: concise action-oriented task name\n- description: extra detail if present, else empty string\n- priority: infer from urgency words (urgent/asap/critical→high, low priority→low), else none\n- due: absolute YYYY-MM-DD from relative phrases (today, tomorrow, Friday, next week, end of month), empty if none\n- tags: inferred topic tags, empty array if none`
+    }]
+  };
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': aiConfig.apiKey,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
-        'anthropic-dangerous-direct-browser-access': 'true',
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 300,
-        messages: [{
-          role: 'user',
-          content: `Parse this task into structured fields. Return ONLY valid JSON, no explanation, no markdown fences.\n\nInput: "${text}"\nToday: ${today}\n\nReturn exactly: {"title":"...","description":"...","priority":"high|med|low|none","due":"YYYY-MM-DD or empty","tags":["..."]}\n\nRules:\n- title: concise action-oriented task name\n- description: extra detail if present, else empty string\n- priority: infer from urgency words (urgent/asap/critical→high, low priority→low), else none\n- due: absolute YYYY-MM-DD from relative phrases (today, tomorrow, Friday, next week, end of month), empty if none\n- tags: inferred topic tags, empty array if none`
-        }]
-      })
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err?.error?.message || `API error ${res.status}`);
+    let data;
+    try {
+      data = await callClaudeAPI(aiConfig.apiKey, body);
+    } catch(e) {
+      if (e.status === 529) {
+        // Auto-retry once after 2 seconds
+        btn.textContent = 'Retrying…';
+        await new Promise(r => setTimeout(r, 2000));
+        data = await callClaudeAPI(aiConfig.apiKey, body);
+      } else {
+        throw e;
+      }
     }
-    const data = await res.json();
     let raw = data.content[0].text.trim();
     raw = raw.replace(/^```json?\s*/i,'').replace(/\s*```$/,'').trim();
     const parsed = JSON.parse(raw);
@@ -2393,7 +2421,10 @@ async function parseNL() {
     msg.textContent = 'Fields filled — review and save.';
     msg.style.color = 'var(--done-c)';
   } catch(e) {
-    msg.textContent = 'Parse failed: ' + e.message;
+    const isOverloaded = e.status === 529 || e.message === 'overloaded';
+    msg.textContent = isOverloaded
+      ? 'API busy — wait a moment and try again.'
+      : 'Parse failed: ' + e.message;
     msg.style.color = 'var(--p-high)';
   } finally {
     btn.disabled = false; btn.textContent = '✨ Parse';
