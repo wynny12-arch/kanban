@@ -1252,7 +1252,7 @@ async function saveModal() {
     const task = b.tasks.find(t => t.id === modalEditId);
     if (task) Object.assign(task, { title, desc, priority, due, tags, attachments });
   } else {
-    b.tasks.push({ id: taskId, col:modalCol, title, desc, priority, due, tags, attachments });
+    b.tasks.unshift({ id: taskId, col:modalCol, title, desc, priority, due, tags, attachments });
   }
   save(); render(); closeModal();
 }
