@@ -2065,8 +2065,6 @@ function stateForCloud() {
       }
     })
   ));
-  // include post-it notes in cloud payload
-  s.postIts = postIts.filter(p => p.text && p.text.trim());
   return s;
 }
 
@@ -2076,23 +2074,10 @@ function mergeCloudState(cloud) {
   (state.boards||[]).forEach(b => (b.tasks||[]).forEach(t =>
     (t.attachments||[]).forEach(a => { if (a.data) localData[`${t.id}:${a.id}`] = a.data; })
   ));
-  // extract post-its before assigning to state
-  const cloudPostIts = cloud.postIts;
-  delete cloud.postIts;
   state = cloud;
   (state.boards||[]).forEach(b => (b.tasks||[]).forEach(t =>
     (t.attachments||[]).forEach(a => { const k=`${t.id}:${a.id}`; if (localData[k]) { a.data=localData[k]; delete a.cloudStripped; } })
   ));
-  // merge post-its from cloud — filter empty, park as hidden, keep any local-only notes
-  if (cloudPostIts) {
-    const validCloud = cloudPostIts
-      .filter(p => p.text && p.text.trim())
-      .map(p => ({ ...p, hidden: true }));
-    const cloudIds = new Set(validCloud.map(p => p.id));
-    const localOnly = postIts.filter(p => p.text && p.text.trim() && !cloudIds.has(p.id));
-    postIts = [...validCloud, ...localOnly];
-    localStorage.setItem('kanban_postits', JSON.stringify(postIts));
-  }
 }
 
 function updateSyncDot(status) {
@@ -2141,6 +2126,9 @@ async function syncPull() {
     if (!res.ok) throw new Error(res.status);
     const data = await res.json();
     mergeCloudState(data.record);
+    // sync postIts global from pulled state, park all as hidden
+    postIts = (state.postIts || []).filter(p => p.text && p.text.trim()).map(p => ({...p, hidden:true}));
+    state.postIts = postIts;
     localStorage.setItem('kanban_v2', JSON.stringify(state));
     render();
     updateSyncDot('synced');
@@ -2509,13 +2497,10 @@ let postIts = [];
 let piDragState = null;
 
 function loadPostIts() {
-  try { postIts = JSON.parse(localStorage.getItem('kanban_postits') || '[]'); } catch(e) { postIts = []; }
-  // remove empty notes, start all remaining as hidden (click Post-it to restore)
-  postIts = postIts.filter(p => p.text && p.text.trim());
+  // read from state (already loaded from kanban_v2 and synced via JSONbin like tasks)
+  postIts = (state.postIts || []).filter(p => p.text && p.text.trim());
   postIts.forEach(p => p.hidden = true);
-  // save locally — push after a delay so syncPull runs first and we don't overwrite cloud
-  localStorage.setItem('kanban_postits', JSON.stringify(postIts));
-  if (postIts.length) setTimeout(schedulePush, 5000);
+  state.postIts = postIts;
   document.addEventListener('mousemove', piMouseMove);
   document.addEventListener('mouseup',   piMouseUp);
   document.addEventListener('touchmove', piTouchMove, { passive: false });
@@ -2523,8 +2508,8 @@ function loadPostIts() {
 }
 
 function savePostIts() {
-  localStorage.setItem('kanban_postits', JSON.stringify(postIts));
-  schedulePush();
+  state.postIts = postIts;
+  save();
 }
 
 function addPostIt() {
