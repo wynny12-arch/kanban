@@ -2495,6 +2495,9 @@ let piDragState = null;
 
 function loadPostIts() {
   try { postIts = JSON.parse(localStorage.getItem('kanban_postits') || '[]'); } catch(e) { postIts = []; }
+  // remove empty notes left over from previous sessions
+  postIts = postIts.filter(p => p.text && p.text.trim());
+  savePostIts();
   postIts.filter(p => !p.hidden).forEach(p => mountPostIt(p));
   document.addEventListener('mousemove', piMouseMove);
   document.addEventListener('mouseup',   piMouseUp);
@@ -2593,6 +2596,7 @@ function mountPostIt(p) {
 }
 
 function piStartDrag(e, id, el, isTouch) {
+  if (e.target.closest('button')) return; // let buttons handle their own clicks
   e.preventDefault();
   const point = isTouch ? e.touches[0] : e;
   const rect   = el.getBoundingClientRect();
