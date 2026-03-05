@@ -2533,16 +2533,13 @@ async function addPostIt() {
       const res = await fetch(`${JSONBIN}/b/${syncConfig.binId}/latest`, {
         headers: { 'X-Master-Key': syncConfig.apiKey }
       });
-      showToast(`fetch ${res.status} cloudPi:${(await res.clone().json().then(d=>(d.record.postIts||[]).length).catch(()=>'?'))}`);
       if (res.ok) {
         const data = await res.json();
         mergeCloudState(data.record);
         postIts = (state.postIts || []).filter(p => p.text && p.text.trim()).map(p => ({...p, hidden: true}));
         state.postIts = postIts;
       }
-    } catch(e) { showToast('fetch err: ' + e.message); }
-  } else {
-    showToast('no sync config');
+    } catch(e) {}
   }
   let hasNote = false;
   postIts.forEach(p => {
