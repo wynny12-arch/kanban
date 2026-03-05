@@ -427,8 +427,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
   box-shadow:6px 10px 28px rgba(0,0,0,.5);
   opacity:.92;
 }
-.postit.minimised{resize:none;height:auto !important;}
-.postit.minimised .postit-textarea{display:none;}
 .postit-header{
   display:flex;align-items:center;justify-content:space-between;
   padding:6px 8px 4px;cursor:grab;flex-shrink:0;
@@ -2496,7 +2494,7 @@ let piDragState = null;
 
 function loadPostIts() {
   try { postIts = JSON.parse(localStorage.getItem('kanban_postits') || '[]'); } catch(e) { postIts = []; }
-  postIts.forEach(p => mountPostIt(p));
+  postIts.filter(p => !p.hidden).forEach(p => mountPostIt(p));
   document.addEventListener('mousemove', piMouseMove);
   document.addEventListener('mouseup',   piMouseUp);
   document.addEventListener('touchmove', piTouchMove, { passive: false });
@@ -2508,12 +2506,20 @@ function savePostIts() {
 }
 
 function addPostIt() {
+  // if any notes are hidden, bring them back instead of creating new
+  const hidden = postIts.filter(p => p.hidden);
+  if (hidden.length) {
+    hidden.forEach(p => { p.hidden = false; mountPostIt(p); });
+    savePostIts();
+    return;
+  }
+  // create a new note
   const id = 'pi_' + Date.now();
   const cx = window.innerWidth / 2 - 110 + (Math.random() - .5) * 120;
   const cy = window.innerHeight / 2 - 80 + (Math.random() - .5) * 80;
   const rot = (Math.random() - .5) * 4;
   const color = PI_COLORS[Math.floor(Math.random() * PI_COLORS.length)];
-  const p = { id, x: Math.round(cx), y: Math.round(cy), rot: +rot.toFixed(2), color, title: '', text: '' };
+  const p = { id, x: Math.round(cx), y: Math.round(cy), rot: +rot.toFixed(2), color, text: '' };
   postIts.push(p);
   savePostIts();
   mountPostIt(p);
@@ -2537,19 +2543,16 @@ function mountPostIt(p) {
     <div class="postit-header" data-pi-handle="${p.id}">
       <div class="postit-colors">${dotButtons}</div>
       <div class="postit-actions">
-        <button class="postit-btn minimise-btn" title="Minimise">${p.minimised ? '□' : '─'}</button>
         <button class="postit-btn" title="Convert to task">→ Task</button>
-        <button class="postit-btn" title="Delete">✕</button>
+        <button class="postit-btn" title="Close">✕</button>
       </div>
     </div>
     <textarea class="postit-textarea" placeholder="Quick note…">${escHtml(p.text||'')}</textarea>
   `;
 
-  // use addEventListener so text saving is reliable
   el.querySelector('.postit-textarea').addEventListener('input', e => updatePostitText(p.id, e.target.value));
-  el.querySelector('.minimise-btn').addEventListener('click', () => togglePostitMinimise(p.id));
   el.querySelector('[title="Convert to task"]').addEventListener('click', () => postitToTask(p.id));
-  el.querySelector('[title="Delete"]').addEventListener('click', () => removePostIt(p.id));
+  el.querySelector('[title="Close"]').addEventListener('click', () => hidePostIt(p.id));
 
   // colour dot clicks
   el.querySelectorAll('.postit-color-dot').forEach(dot => {
@@ -2568,18 +2571,13 @@ function mountPostIt(p) {
 
   document.body.appendChild(el);
 
-  // apply saved height or force to header height if minimised
-  if (p.minimised) {
-    el.classList.add('minimised');
-    el.style.height = el.querySelector('.postit-header').offsetHeight + 'px';
-    el.style.resize = 'none';
-  } else if (p.h) {
+  if (p.h) {
     el.style.height = p.h + 'px';
   }
 
   // persist size when user drags the resize handle
   const ro = new ResizeObserver(entries => {
-    if (postIts.find(q => q.id === p.id)?.minimised) return;
+    if (postIts.find(q => q.id === p.id)?.hidden) return;
     const { width, height } = entries[0].contentRect;
     const pi = postIts.find(q => q.id === p.id);
     if (pi) { pi.w = Math.round(width); pi.h = Math.round(height); savePostIts(); }
@@ -2654,30 +2652,11 @@ function setPostitColor(id, color, el) {
   savePostIts();
 }
 
-function removePostIt(id) {
-  postIts = postIts.filter(p => p.id !== id);
-  savePostIts();
+function hidePostIt(id) {
+  const p = postIts.find(p => p.id === id);
+  if (p) { p.hidden = true; savePostIts(); }
   const el = document.getElementById(id);
   if (el) el.remove();
-}
-
-function togglePostitMinimise(id) {
-  const p = postIts.find(p => p.id === id);
-  if (!p) return;
-  p.minimised = !p.minimised;
-  const el = document.getElementById(id);
-  if (!el) return;
-  el.classList.toggle('minimised', p.minimised);
-  el.querySelector('.minimise-btn').textContent = p.minimised ? '□' : '─';
-  if (p.minimised) {
-    p.h = el.offsetHeight; // save current height before collapsing
-    el.style.height = el.querySelector('.postit-header').offsetHeight + 'px';
-    el.style.resize = 'none';
-  } else {
-    el.style.height = (p.h || 180) + 'px';
-    el.style.resize = 'both';
-  }
-  savePostIts();
 }
 
 function postitToTask(id) {
