@@ -2508,7 +2508,8 @@ function loadPostIts() {
   // remove empty notes, start all remaining as hidden (click Post-it to restore)
   postIts = postIts.filter(p => p.text && p.text.trim());
   postIts.forEach(p => p.hidden = true);
-  savePostIts();
+  // save locally only — do NOT push to cloud so we don't overwrite cloud state before syncPull runs
+  localStorage.setItem('kanban_postits', JSON.stringify(postIts));
   document.addEventListener('mousemove', piMouseMove);
   document.addEventListener('mouseup',   piMouseUp);
   document.addEventListener('touchmove', piTouchMove, { passive: false });
