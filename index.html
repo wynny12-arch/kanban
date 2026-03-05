@@ -2507,7 +2507,10 @@ function savePostIts() {
 }
 
 function addPostIt() {
-  // if any notes are hidden, bring them back instead of creating new
+  // purge any empty hidden notes left over from previous sessions
+  postIts = postIts.filter(p => !p.hidden || (p.text && p.text.trim()));
+
+  // if any notes with content are hidden, bring them back
   const hidden = postIts.filter(p => p.hidden);
   if (hidden.length) {
     hidden.forEach(p => { p.hidden = false; mountPostIt(p); });
@@ -2654,15 +2657,22 @@ function setPostitColor(id, color, el) {
 }
 
 function hidePostIt(id) {
-  // flush current textarea value before hiding
   const el = document.getElementById(id);
+  let text = '';
   if (el) {
     const ta = el.querySelector('.postit-textarea');
-    if (ta) updatePostitText(id, ta.value);
+    text = ta ? ta.value : '';
+    el.remove();
   }
-  const p = postIts.find(p => p.id === id);
-  if (p) { p.hidden = true; savePostIts(); }
-  if (el) el.remove();
+  if (text.trim()) {
+    // has content — hide so it can be reopened
+    const p = postIts.find(p => p.id === id);
+    if (p) { p.text = text; p.hidden = true; savePostIts(); }
+  } else {
+    // empty — delete permanently so it doesn't come back
+    postIts = postIts.filter(p => p.id !== id);
+    savePostIts();
+  }
 }
 
 function postitToTask(id) {
