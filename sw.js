@@ -1,4 +1,4 @@
-const CACHE  = 'kanban-v1';
+const CACHE  = 'kanban-v3';
 const ASSETS = ['/kanban/', '/kanban/index.html'];
 
 self.addEventListener('install', e => {
