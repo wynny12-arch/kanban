@@ -2092,6 +2092,20 @@ async function syncPush() {
   try {
     // First attempt: include compressed images
     const payload = stateForCloud();
+    // If this device has no text-bearing post-its, rescue any that exist in the cloud
+    // so they aren't silently overwritten by our empty local state
+    if (!(payload.postIts || []).some(p => p.text && p.text.trim())) {
+      try {
+        const cr = await fetch(`${JSONBIN}/b/${syncConfig.binId}/latest`, {
+          headers: { 'X-Master-Key': syncConfig.apiKey }
+        });
+        if (cr.ok) {
+          const cd = await cr.json();
+          const kept = (cd.record.postIts || []).filter(p => p.text && p.text.trim());
+          if (kept.length) payload.postIts = kept;
+        }
+      } catch(e) {}
+    }
     let res = await fetch(`${JSONBIN}/b/${syncConfig.binId}`, {
       method: 'PUT',
       headers: { 'Content-Type':'application/json', 'X-Master-Key': syncConfig.apiKey },
@@ -2512,7 +2526,21 @@ function savePostIts() {
   save();
 }
 
-function addPostIt() {
+async function addPostIt() {
+  // pull fresh data from cloud so notes created on other devices are visible immediately
+  if (syncConfig.apiKey && syncConfig.binId) {
+    try {
+      const res = await fetch(`${JSONBIN}/b/${syncConfig.binId}/latest`, {
+        headers: { 'X-Master-Key': syncConfig.apiKey }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        mergeCloudState(data.record);
+        postIts = (state.postIts || []).filter(p => p.text && p.text.trim()).map(p => ({...p, hidden: true}));
+        state.postIts = postIts;
+      }
+    } catch(e) {} // offline — use cached state
+  }
   let hasNote = false;
   postIts.forEach(p => {
     if (!p.text || !p.text.trim()) return;
