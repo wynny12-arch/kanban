@@ -2065,6 +2065,8 @@ function stateForCloud() {
       }
     })
   ));
+  // include post-it notes in cloud payload
+  s.postIts = postIts.filter(p => p.text && p.text.trim());
   return s;
 }
 
@@ -2074,10 +2076,18 @@ function mergeCloudState(cloud) {
   (state.boards||[]).forEach(b => (b.tasks||[]).forEach(t =>
     (t.attachments||[]).forEach(a => { if (a.data) localData[`${t.id}:${a.id}`] = a.data; })
   ));
+  // extract post-its before assigning to state
+  const cloudPostIts = cloud.postIts;
+  delete cloud.postIts;
   state = cloud;
   (state.boards||[]).forEach(b => (b.tasks||[]).forEach(t =>
     (t.attachments||[]).forEach(a => { const k=`${t.id}:${a.id}`; if (localData[k]) { a.data=localData[k]; delete a.cloudStripped; } })
   ));
+  // merge post-its from cloud
+  if (cloudPostIts && cloudPostIts.length) {
+    postIts = cloudPostIts;
+    localStorage.setItem('kanban_postits', JSON.stringify(postIts));
+  }
 }
 
 function updateSyncDot(status) {
@@ -2507,6 +2517,7 @@ function loadPostIts() {
 
 function savePostIts() {
   localStorage.setItem('kanban_postits', JSON.stringify(postIts));
+  schedulePush();
 }
 
 function addPostIt() {
