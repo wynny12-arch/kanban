@@ -412,6 +412,48 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
 .ai-dot.off{background:var(--muted);}
 .ai-dot.on{background:var(--done-c);}
 
+/* ── Post-it notes ───────────────────────────────────────── */
+.postit{
+  position:fixed;z-index:200;width:220px;
+  border-radius:4px 4px 4px 4px;
+  box-shadow:3px 4px 14px rgba(0,0,0,.35);
+  display:flex;flex-direction:column;
+  user-select:none;
+  transition:box-shadow .15s;
+}
+.postit.pi-dragging{
+  box-shadow:6px 10px 28px rgba(0,0,0,.5);
+  opacity:.92;
+}
+.postit-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:6px 8px 4px;cursor:grab;flex-shrink:0;
+  border-radius:4px 4px 0 0;
+  background:rgba(0,0,0,.12);
+}
+.postit-header:active{cursor:grabbing;}
+.postit-colors{display:flex;gap:5px;align-items:center;}
+.postit-color-dot{
+  width:13px;height:13px;border-radius:50%;cursor:pointer;flex-shrink:0;
+  border:2px solid rgba(0,0,0,.0);transition:border-color .12s,transform .12s;
+}
+.postit-color-dot:hover,.postit-color-dot.active{
+  border-color:rgba(0,0,0,.45);transform:scale(1.2);
+}
+.postit-actions{display:flex;gap:4px;}
+.postit-btn{
+  background:rgba(0,0,0,.18);border:none;cursor:pointer;
+  border-radius:4px;padding:2px 6px;font-size:.7rem;color:#1e293b;
+  font-weight:600;line-height:1.6;transition:background .12s;
+}
+.postit-btn:hover{background:rgba(0,0,0,.32);}
+.postit-textarea{
+  flex:1;background:transparent;border:none;outline:none;resize:none;
+  padding:10px 10px 14px;font-size:.88rem;font-family:inherit;
+  color:#1e293b;line-height:1.5;min-height:110px;cursor:text;
+}
+.postit-textarea::placeholder{color:rgba(30,41,59,.45);}
+
 /* ── Board name inline edit ─────────────────────────────── */
 .board-name-edit{
   background:none;border:none;border-bottom:2px solid var(--accent);
@@ -620,6 +662,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
     </div>
     <div class="topbar-actions">
       <button class="icon-btn widget-mobile-btn" onclick="openWidgetSheet()">📊 Live</button>
+      <button class="icon-btn" onclick="addPostIt()" title="Add sticky note">📝 Post-it</button>
       <button class="icon-btn" id="sort-toggle-btn" onclick="toggleSortMode()" title="Switch sort mode">⇅ Priority</button>
       <button class="icon-btn" onclick="openModal(activeCol())">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -2436,6 +2479,156 @@ async function parseNL() {
   }
 }
 
+/* ─── Post-it notes ─────────────────────────────────────── */
+const PI_COLORS = ['#fef08a','#fbcfe8','#bbf7d0','#bfdbfe','#fed7aa'];
+let postIts = [];
+let piDragState = null;
+
+function loadPostIts() {
+  try { postIts = JSON.parse(localStorage.getItem('kanban_postits') || '[]'); } catch(e) { postIts = []; }
+  postIts.forEach(p => mountPostIt(p));
+  document.addEventListener('mousemove', piMouseMove);
+  document.addEventListener('mouseup',   piMouseUp);
+  document.addEventListener('touchmove', piTouchMove, { passive: false });
+  document.addEventListener('touchend',  piTouchUp);
+}
+
+function savePostIts() {
+  localStorage.setItem('kanban_postits', JSON.stringify(postIts));
+}
+
+function addPostIt() {
+  const id = 'pi_' + Date.now();
+  const cx = window.innerWidth / 2 - 110 + (Math.random() - .5) * 120;
+  const cy = window.innerHeight / 2 - 80 + (Math.random() - .5) * 80;
+  const rot = (Math.random() - .5) * 4;
+  const color = PI_COLORS[Math.floor(Math.random() * PI_COLORS.length)];
+  const p = { id, x: Math.round(cx), y: Math.round(cy), rot: +rot.toFixed(2), color, text: '' };
+  postIts.push(p);
+  savePostIts();
+  mountPostIt(p);
+}
+
+function mountPostIt(p) {
+  if (document.getElementById(p.id)) return;
+  const el = document.createElement('div');
+  el.className = 'postit';
+  el.id = p.id;
+  el.style.left    = p.x + 'px';
+  el.style.top     = p.y + 'px';
+  el.style.background = p.color;
+  el.style.transform = `rotate(${p.rot}deg)`;
+
+  const dotButtons = PI_COLORS.map(c =>
+    `<span class="postit-color-dot${c===p.color?' active':''}" style="background:${c}" data-c="${c}" title="${c}"></span>`
+  ).join('');
+
+  el.innerHTML = `
+    <div class="postit-header" data-pi-handle="${p.id}">
+      <div class="postit-colors">${dotButtons}</div>
+      <div class="postit-actions">
+        <button class="postit-btn" onclick="postitToTask('${p.id}')" title="Convert to task">→ Task</button>
+        <button class="postit-btn" onclick="removePostIt('${p.id}')" title="Delete">✕</button>
+      </div>
+    </div>
+    <textarea class="postit-textarea" placeholder="Quick note…" oninput="updatePostitText('${p.id}',this.value)">${escHtml(p.text||'')}</textarea>
+  `;
+
+  // colour dot clicks
+  el.querySelectorAll('.postit-color-dot').forEach(dot => {
+    dot.addEventListener('click', e => {
+      e.stopPropagation();
+      setPostitColor(p.id, dot.dataset.c, el);
+    });
+  });
+
+  // drag: header handle
+  const handle = el.querySelector('[data-pi-handle]');
+  handle.addEventListener('mousedown',  e => piStartDrag(e, p.id, el, false));
+  handle.addEventListener('touchstart', e => piStartDrag(e, p.id, el, true), { passive: false });
+
+  document.body.appendChild(el);
+  // auto-focus textarea for new (empty) notes
+  if (!p.text) setTimeout(() => el.querySelector('textarea').focus(), 50);
+}
+
+function piStartDrag(e, id, el, isTouch) {
+  e.preventDefault();
+  const point = isTouch ? e.touches[0] : e;
+  const rect   = el.getBoundingClientRect();
+  piDragState = {
+    id, el,
+    offX: point.clientX - rect.left,
+    offY: point.clientY - rect.top
+  };
+  el.classList.add('pi-dragging');
+}
+
+function piMouseMove(e) {
+  if (!piDragState) return;
+  piMoveTo(e.clientX, e.clientY);
+}
+function piTouchMove(e) {
+  if (!piDragState) return;
+  e.preventDefault();
+  piMoveTo(e.touches[0].clientX, e.touches[0].clientY);
+}
+function piMoveTo(cx, cy) {
+  const { el, offX, offY } = piDragState;
+  const x = cx - offX;
+  const y = cy - offY;
+  el.style.left = x + 'px';
+  el.style.top  = y + 'px';
+}
+function piMouseUp(e)  { piEndDrag(e.clientX, e.clientY); }
+function piTouchUp(e)  { if (!piDragState) return; const t = e.changedTouches[0]; piEndDrag(t.clientX, t.clientY); }
+function piEndDrag(cx, cy) {
+  if (!piDragState) return;
+  const { id, el, offX, offY } = piDragState;
+  const x = Math.round(cx - offX);
+  const y = Math.round(cy - offY);
+  el.style.left = x + 'px';
+  el.style.top  = y + 'px';
+  el.classList.remove('pi-dragging');
+  const p = postIts.find(p => p.id === id);
+  if (p) { p.x = x; p.y = y; savePostIts(); }
+  piDragState = null;
+}
+
+function updatePostitText(id, val) {
+  const p = postIts.find(p => p.id === id);
+  if (p) { p.text = val; savePostIts(); }
+}
+
+function setPostitColor(id, color, el) {
+  const p = postIts.find(p => p.id === id);
+  if (!p) return;
+  p.color = color;
+  el.style.background = color;
+  el.querySelectorAll('.postit-color-dot').forEach(d => {
+    d.classList.toggle('active', d.dataset.c === color);
+  });
+  savePostIts();
+}
+
+function removePostIt(id) {
+  postIts = postIts.filter(p => p.id !== id);
+  savePostIts();
+  const el = document.getElementById(id);
+  if (el) el.remove();
+}
+
+function postitToTask(id) {
+  const p = postIts.find(p => p.id === id);
+  if (!p) return;
+  const text = (p.text || '').trim();
+  const title = text.split('\n')[0].trim();
+  removePostIt(id);
+  openModal(activeCol());
+  if (title) document.getElementById('m-title').value = title;
+  if (text)  { document.getElementById('nl-input').value = text; }
+}
+
 /* ─── Widgets ────────────────────────────────────────────── */
 let widgetsOpen = true;
 
@@ -2638,6 +2831,7 @@ loadSyncConfig();
 loadStorageConfig();
 loadAiConfig();
 loadSortMode();
+loadPostIts();
 render();
 syncPull();
 initWidgets();
