@@ -2495,10 +2495,10 @@ let piDragState = null;
 
 function loadPostIts() {
   try { postIts = JSON.parse(localStorage.getItem('kanban_postits') || '[]'); } catch(e) { postIts = []; }
-  // remove empty notes left over from previous sessions
+  // remove empty notes, start all remaining as hidden (click Post-it to restore)
   postIts = postIts.filter(p => p.text && p.text.trim());
+  postIts.forEach(p => p.hidden = true);
   savePostIts();
-  postIts.filter(p => !p.hidden).forEach(p => mountPostIt(p));
   document.addEventListener('mousemove', piMouseMove);
   document.addEventListener('mouseup',   piMouseUp);
   document.addEventListener('touchmove', piTouchMove, { passive: false });
@@ -2559,7 +2559,9 @@ function mountPostIt(p) {
 
   el.querySelector('.postit-textarea').addEventListener('input', e => updatePostitText(p.id, e.target.value));
   el.querySelector('[title="Convert to task"]').addEventListener('click', () => postitToTask(p.id));
-  el.querySelector('[title="Close"]').addEventListener('click', () => hidePostIt(p.id));
+  const closeBtn = el.querySelector('[title="Close"]');
+  closeBtn.addEventListener('click', () => hidePostIt(p.id));
+  closeBtn.addEventListener('touchend', e => { e.stopPropagation(); e.preventDefault(); hidePostIt(p.id); });
 
   // colour dot clicks
   el.querySelectorAll('.postit-color-dot').forEach(dot => {
