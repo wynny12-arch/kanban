@@ -2513,15 +2513,31 @@ function savePostIts() {
 }
 
 function addPostIt() {
-  // show any notes with text that aren't already visible in the DOM
-  const toShow = postIts.filter(p => p.text && p.text.trim() && !document.getElementById(p.id));
-  showToast(`pi:${postIts.length} show:${toShow.length} texts:[${postIts.map(p=>(p.text||'').slice(0,10)).join('|')}]`);
-  if (toShow.length) {
-    toShow.forEach(p => { p.hidden = false; mountPostIt(p); });
-    savePostIts();
-    return;
-  }
-  // all notes already showing or none exist — create a new note
+  let hasNote = false;
+  postIts.forEach(p => {
+    if (!p.text || !p.text.trim()) return;
+    hasNote = true;
+    const el = document.getElementById(p.id);
+    if (el) {
+      // already mounted — if off-screen bring it back to centre
+      const rect = el.getBoundingClientRect();
+      const offScreen = rect.right < 20 || rect.left > window.innerWidth - 20
+                     || rect.bottom < 20 || rect.top > window.innerHeight - 20;
+      if (offScreen) {
+        const nx = Math.max(0, Math.min(Math.round(window.innerWidth / 2 - 110), window.innerWidth - 240));
+        const ny = Math.max(0, Math.min(Math.round(window.innerHeight / 2 - 80), window.innerHeight - 160));
+        el.style.left = nx + 'px';
+        el.style.top  = ny + 'px';
+        p.x = nx; p.y = ny;
+      }
+    } else {
+      // not yet in DOM — mount it (mountPostIt clamps coords to viewport)
+      p.hidden = false;
+      mountPostIt(p);
+    }
+  });
+  if (hasNote) { savePostIts(); return; }
+  // no notes with text — create a fresh one
   const id = 'pi_' + Date.now();
   const cx = window.innerWidth / 2 - 110 + (Math.random() - .5) * 120;
   const cy = window.innerHeight / 2 - 80 + (Math.random() - .5) * 80;
