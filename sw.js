@@ -1,10 +1,6 @@
-const CACHE  = 'kanban-v3';
-const ASSETS = ['/kanban/', '/kanban/index.html'];
+const CACHE = 'kanban-v3';
 
-self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)));
-  self.skipWaiting();
-});
+self.addEventListener('install', e => { self.skipWaiting(); });
 
 self.addEventListener('activate', e => {
   e.waitUntil(
@@ -16,11 +12,16 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
-  // Navigation: network first, fall back to cached app shell
   if (e.request.mode === 'navigate') {
-    e.respondWith(fetch(e.request).catch(() => caches.match('/kanban/index.html')));
+    // Network first — serve fresh HTML, update cache for offline fallback
+    e.respondWith(
+      fetch(e.request).then(res => {
+        const copy = res.clone();
+        caches.open(CACHE).then(c => c.put(e.request, copy));
+        return res;
+      }).catch(() => caches.match(e.request))
+    );
     return;
   }
-  // Everything else: cache first
   e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)));
 });
