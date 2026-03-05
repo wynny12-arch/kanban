@@ -2523,18 +2523,25 @@ function savePostIts() {
   schedulePush();
 }
 
-function addPostIt() {
-  // purge any empty hidden notes left over from previous sessions
+async function addPostIt() {
+  // purge any empty hidden notes
   postIts = postIts.filter(p => !p.hidden || (p.text && p.text.trim()));
 
-  // if any notes with content are hidden, bring them back
-  const hidden = postIts.filter(p => p.hidden);
+  // if hidden notes exist locally, show them
+  let hidden = postIts.filter(p => p.hidden);
+  if (!hidden.length && syncConfig.apiKey && syncConfig.binId) {
+    // nothing local — pull from cloud first in case another device pushed notes
+    await syncPull();
+    postIts = postIts.filter(p => !p.hidden || (p.text && p.text.trim()));
+    hidden = postIts.filter(p => p.hidden);
+  }
+
   if (hidden.length) {
     hidden.forEach(p => { p.hidden = false; mountPostIt(p); });
     savePostIts();
     return;
   }
-  // create a new note
+  // truly nothing anywhere — create a new note
   const id = 'pi_' + Date.now();
   const cx = window.innerWidth / 2 - 110 + (Math.random() - .5) * 120;
   const cy = window.innerHeight / 2 - 80 + (Math.random() - .5) * 80;
