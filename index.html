@@ -2508,10 +2508,8 @@ function loadPostIts() {
   // remove empty notes, start all remaining as hidden (click Post-it to restore)
   postIts = postIts.filter(p => p.text && p.text.trim());
   postIts.forEach(p => p.hidden = true);
-  // save locally only — syncPull will run immediately after, so don't push yet
+  // save locally only — no push so we don't overwrite cloud before pulling
   localStorage.setItem('kanban_postits', JSON.stringify(postIts));
-  // schedule a push after boot so other devices can pull any local notes we have
-  if (postIts.length) setTimeout(schedulePush, 3500);
   document.addEventListener('mousemove', piMouseMove);
   document.addEventListener('mouseup',   piMouseUp);
   document.addEventListener('touchmove', piTouchMove, { passive: false });
@@ -2523,25 +2521,18 @@ function savePostIts() {
   schedulePush();
 }
 
-async function addPostIt() {
+function addPostIt() {
   // purge any empty hidden notes
   postIts = postIts.filter(p => !p.hidden || (p.text && p.text.trim()));
 
-  // if hidden notes exist locally, show them
-  let hidden = postIts.filter(p => p.hidden);
-  if (!hidden.length && syncConfig.apiKey && syncConfig.binId) {
-    // nothing local — pull from cloud first in case another device pushed notes
-    await syncPull();
-    postIts = postIts.filter(p => !p.hidden || (p.text && p.text.trim()));
-    hidden = postIts.filter(p => p.hidden);
-  }
-
+  // if hidden notes exist, show them
+  const hidden = postIts.filter(p => p.hidden);
   if (hidden.length) {
     hidden.forEach(p => { p.hidden = false; mountPostIt(p); });
     savePostIts();
     return;
   }
-  // truly nothing anywhere — create a new note
+  // nothing found — create a new note
   const id = 'pi_' + Date.now();
   const cx = window.innerWidth / 2 - 110 + (Math.random() - .5) * 120;
   const cy = window.innerHeight / 2 - 80 + (Math.random() - .5) * 80;
