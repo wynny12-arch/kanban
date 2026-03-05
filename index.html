@@ -2515,6 +2515,7 @@ function savePostIts() {
 function addPostIt() {
   // show any notes with text that aren't already visible in the DOM
   const toShow = postIts.filter(p => p.text && p.text.trim() && !document.getElementById(p.id));
+  showToast(`pi:${postIts.length} show:${toShow.length} texts:[${postIts.map(p=>(p.text||'').slice(0,10)).join('|')}]`);
   if (toShow.length) {
     toShow.forEach(p => { p.hidden = false; mountPostIt(p); });
     savePostIts();
