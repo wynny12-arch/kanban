@@ -2536,20 +2536,20 @@ function mountPostIt(p) {
   el.innerHTML = `
     <div class="postit-header" data-pi-handle="${p.id}">
       <div class="postit-colors">${dotButtons}</div>
-      <input class="postit-title" type="text" value="${escHtml(p.title||'')}" placeholder="Title…"
-        oninput="updatePostitTitle('${p.id}',this.value)"
-        onmousedown="event.stopPropagation()"
-        ontouchstart="event.stopPropagation()"/>
       <div class="postit-actions">
-        <button class="postit-btn minimise-btn" onclick="togglePostitMinimise('${p.id}')" title="Minimise">${p.minimised ? '□' : '─'}</button>
-        <button class="postit-btn" onclick="postitToTask('${p.id}')" title="Convert to task">→ Task</button>
-        <button class="postit-btn" onclick="removePostIt('${p.id}')" title="Delete">✕</button>
+        <button class="postit-btn minimise-btn" title="Minimise">${p.minimised ? '□' : '─'}</button>
+        <button class="postit-btn" title="Convert to task">→ Task</button>
+        <button class="postit-btn" title="Delete">✕</button>
       </div>
     </div>
-    <textarea class="postit-textarea" placeholder="Quick note…" oninput="updatePostitText('${p.id}',this.value)">${escHtml(p.text||'')}</textarea>
+    <textarea class="postit-textarea" placeholder="Quick note…">${escHtml(p.text||'')}</textarea>
   `;
 
-  if (p.minimised) el.classList.add('minimised');
+  // use addEventListener so text saving is reliable
+  el.querySelector('.postit-textarea').addEventListener('input', e => updatePostitText(p.id, e.target.value));
+  el.querySelector('.minimise-btn').addEventListener('click', () => togglePostitMinimise(p.id));
+  el.querySelector('[title="Convert to task"]').addEventListener('click', () => postitToTask(p.id));
+  el.querySelector('[title="Delete"]').addEventListener('click', () => removePostIt(p.id));
 
   // colour dot clicks
   el.querySelectorAll('.postit-color-dot').forEach(dot => {
@@ -2564,13 +2564,22 @@ function mountPostIt(p) {
   handle.addEventListener('mousedown',  e => piStartDrag(e, p.id, el, false));
   handle.addEventListener('touchstart', e => piStartDrag(e, p.id, el, true), { passive: false });
 
-  if (p.w) el.style.width  = p.w + 'px';
-  if (p.h) el.style.height = p.h + 'px';
+  if (p.w) el.style.width = p.w + 'px';
 
   document.body.appendChild(el);
 
+  // apply saved height or force to header height if minimised
+  if (p.minimised) {
+    el.classList.add('minimised');
+    el.style.height = el.querySelector('.postit-header').offsetHeight + 'px';
+    el.style.resize = 'none';
+  } else if (p.h) {
+    el.style.height = p.h + 'px';
+  }
+
   // persist size when user drags the resize handle
   const ro = new ResizeObserver(entries => {
+    if (postIts.find(q => q.id === p.id)?.minimised) return;
     const { width, height } = entries[0].contentRect;
     const pi = postIts.find(q => q.id === p.id);
     if (pi) { pi.w = Math.round(width); pi.h = Math.round(height); savePostIts(); }
@@ -2578,7 +2587,7 @@ function mountPostIt(p) {
   ro.observe(el);
 
   // auto-focus textarea for new (empty) notes
-  if (!p.text) setTimeout(() => el.querySelector('textarea').focus(), 50);
+  if (!p.text) setTimeout(() => el.querySelector('.postit-textarea').focus(), 50);
 }
 
 function piStartDrag(e, id, el, isTouch) {
@@ -2657,17 +2666,16 @@ function togglePostitMinimise(id) {
   if (!p) return;
   p.minimised = !p.minimised;
   const el = document.getElementById(id);
-  if (el) {
-    if (p.minimised) {
-      // save current height then clear inline height so CSS height:auto takes over
-      if (!p.h) p.h = el.offsetHeight;
-      el.style.height = '';
-    } else {
-      // restore previous height
-      if (p.h) el.style.height = p.h + 'px';
-    }
-    el.classList.toggle('minimised', p.minimised);
-    el.querySelector('.minimise-btn').textContent = p.minimised ? '□' : '─';
+  if (!el) return;
+  el.classList.toggle('minimised', p.minimised);
+  el.querySelector('.minimise-btn').textContent = p.minimised ? '□' : '─';
+  if (p.minimised) {
+    p.h = el.offsetHeight; // save current height before collapsing
+    el.style.height = el.querySelector('.postit-header').offsetHeight + 'px';
+    el.style.resize = 'none';
+  } else {
+    el.style.height = (p.h || 180) + 'px';
+    el.style.resize = 'both';
   }
   savePostIts();
 }
