@@ -2513,6 +2513,7 @@ function savePostIts() {
 }
 
 function addPostIt() {
+  showToast(`Notes in state: ${(state.postIts||[]).length}, in memory: ${postIts.length}`);
   // purge any empty hidden notes
   postIts = postIts.filter(p => !p.hidden || (p.text && p.text.trim()));
 
