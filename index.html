@@ -2083,9 +2083,14 @@ function mergeCloudState(cloud) {
   (state.boards||[]).forEach(b => (b.tasks||[]).forEach(t =>
     (t.attachments||[]).forEach(a => { const k=`${t.id}:${a.id}`; if (localData[k]) { a.data=localData[k]; delete a.cloudStripped; } })
   ));
-  // merge post-its from cloud — always park as hidden (per-device UI state)
-  if (cloudPostIts && cloudPostIts.length) {
-    postIts = cloudPostIts.map(p => ({ ...p, hidden: true }));
+  // merge post-its from cloud — filter empty, park as hidden, keep any local-only notes
+  if (cloudPostIts) {
+    const validCloud = cloudPostIts
+      .filter(p => p.text && p.text.trim())
+      .map(p => ({ ...p, hidden: true }));
+    const cloudIds = new Set(validCloud.map(p => p.id));
+    const localOnly = postIts.filter(p => p.text && p.text.trim() && !cloudIds.has(p.id));
+    postIts = [...validCloud, ...localOnly];
     localStorage.setItem('kanban_postits', JSON.stringify(postIts));
   }
 }
@@ -2508,8 +2513,9 @@ function loadPostIts() {
   // remove empty notes, start all remaining as hidden (click Post-it to restore)
   postIts = postIts.filter(p => p.text && p.text.trim());
   postIts.forEach(p => p.hidden = true);
-  // save locally only — no push so we don't overwrite cloud before pulling
+  // save locally — push after a delay so syncPull runs first and we don't overwrite cloud
   localStorage.setItem('kanban_postits', JSON.stringify(postIts));
+  if (postIts.length) setTimeout(schedulePush, 5000);
   document.addEventListener('mousemove', piMouseMove);
   document.addEventListener('mouseup',   piMouseUp);
   document.addEventListener('touchmove', piTouchMove, { passive: false });
