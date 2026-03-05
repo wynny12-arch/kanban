@@ -427,7 +427,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
   box-shadow:6px 10px 28px rgba(0,0,0,.5);
   opacity:.92;
 }
-.postit.minimised{resize:none;}
+.postit.minimised{resize:none;height:auto !important;}
 .postit.minimised .postit-textarea{display:none;}
 .postit-header{
   display:flex;align-items:center;justify-content:space-between;
@@ -457,6 +457,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
   color:#1e293b;line-height:1.5;min-height:110px;cursor:text;
 }
 .postit-textarea::placeholder{color:rgba(30,41,59,.45);}
+.postit-title{
+  flex:1;background:transparent;border:none;outline:none;
+  font-size:.75rem;font-weight:700;color:rgba(30,41,59,.75);
+  cursor:text;min-width:0;padding:0 6px;font-family:inherit;
+}
+.postit-title::placeholder{color:rgba(30,41,59,.35);}
 
 /* ── Board name inline edit ─────────────────────────────── */
 .board-name-edit{
@@ -2507,7 +2513,7 @@ function addPostIt() {
   const cy = window.innerHeight / 2 - 80 + (Math.random() - .5) * 80;
   const rot = (Math.random() - .5) * 4;
   const color = PI_COLORS[Math.floor(Math.random() * PI_COLORS.length)];
-  const p = { id, x: Math.round(cx), y: Math.round(cy), rot: +rot.toFixed(2), color, text: '' };
+  const p = { id, x: Math.round(cx), y: Math.round(cy), rot: +rot.toFixed(2), color, title: '', text: '' };
   postIts.push(p);
   savePostIts();
   mountPostIt(p);
@@ -2530,6 +2536,10 @@ function mountPostIt(p) {
   el.innerHTML = `
     <div class="postit-header" data-pi-handle="${p.id}">
       <div class="postit-colors">${dotButtons}</div>
+      <input class="postit-title" type="text" value="${escHtml(p.title||'')}" placeholder="Title…"
+        oninput="updatePostitTitle('${p.id}',this.value)"
+        onmousedown="event.stopPropagation()"
+        ontouchstart="event.stopPropagation()"/>
       <div class="postit-actions">
         <button class="postit-btn minimise-btn" onclick="togglePostitMinimise('${p.id}')" title="Minimise">${p.minimised ? '□' : '─'}</button>
         <button class="postit-btn" onclick="postitToTask('${p.id}')" title="Convert to task">→ Task</button>
@@ -2619,6 +2629,11 @@ function updatePostitText(id, val) {
   if (p) { p.text = val; savePostIts(); }
 }
 
+function updatePostitTitle(id, val) {
+  const p = postIts.find(p => p.id === id);
+  if (p) { p.title = val; savePostIts(); }
+}
+
 function setPostitColor(id, color, el) {
   const p = postIts.find(p => p.id === id);
   if (!p) return;
@@ -2643,6 +2658,14 @@ function togglePostitMinimise(id) {
   p.minimised = !p.minimised;
   const el = document.getElementById(id);
   if (el) {
+    if (p.minimised) {
+      // save current height then clear inline height so CSS height:auto takes over
+      if (!p.h) p.h = el.offsetHeight;
+      el.style.height = '';
+    } else {
+      // restore previous height
+      if (p.h) el.style.height = p.h + 'px';
+    }
     el.classList.toggle('minimised', p.minimised);
     el.querySelector('.minimise-btn').textContent = p.minimised ? '□' : '─';
   }
