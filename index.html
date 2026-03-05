@@ -419,12 +419,16 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
   box-shadow:3px 4px 14px rgba(0,0,0,.35);
   display:flex;flex-direction:column;
   user-select:none;
+  resize:both;overflow:hidden;
+  min-width:160px;min-height:120px;
   transition:box-shadow .15s;
 }
 .postit.pi-dragging{
   box-shadow:6px 10px 28px rgba(0,0,0,.5);
   opacity:.92;
 }
+.postit.minimised{resize:none;}
+.postit.minimised .postit-textarea{display:none;}
 .postit-header{
   display:flex;align-items:center;justify-content:space-between;
   padding:6px 8px 4px;cursor:grab;flex-shrink:0;
@@ -2527,12 +2531,15 @@ function mountPostIt(p) {
     <div class="postit-header" data-pi-handle="${p.id}">
       <div class="postit-colors">${dotButtons}</div>
       <div class="postit-actions">
+        <button class="postit-btn minimise-btn" onclick="togglePostitMinimise('${p.id}')" title="Minimise">${p.minimised ? '□' : '─'}</button>
         <button class="postit-btn" onclick="postitToTask('${p.id}')" title="Convert to task">→ Task</button>
         <button class="postit-btn" onclick="removePostIt('${p.id}')" title="Delete">✕</button>
       </div>
     </div>
     <textarea class="postit-textarea" placeholder="Quick note…" oninput="updatePostitText('${p.id}',this.value)">${escHtml(p.text||'')}</textarea>
   `;
+
+  if (p.minimised) el.classList.add('minimised');
 
   // colour dot clicks
   el.querySelectorAll('.postit-color-dot').forEach(dot => {
@@ -2547,7 +2554,19 @@ function mountPostIt(p) {
   handle.addEventListener('mousedown',  e => piStartDrag(e, p.id, el, false));
   handle.addEventListener('touchstart', e => piStartDrag(e, p.id, el, true), { passive: false });
 
+  if (p.w) el.style.width  = p.w + 'px';
+  if (p.h) el.style.height = p.h + 'px';
+
   document.body.appendChild(el);
+
+  // persist size when user drags the resize handle
+  const ro = new ResizeObserver(entries => {
+    const { width, height } = entries[0].contentRect;
+    const pi = postIts.find(q => q.id === p.id);
+    if (pi) { pi.w = Math.round(width); pi.h = Math.round(height); savePostIts(); }
+  });
+  ro.observe(el);
+
   // auto-focus textarea for new (empty) notes
   if (!p.text) setTimeout(() => el.querySelector('textarea').focus(), 50);
 }
@@ -2616,6 +2635,18 @@ function removePostIt(id) {
   savePostIts();
   const el = document.getElementById(id);
   if (el) el.remove();
+}
+
+function togglePostitMinimise(id) {
+  const p = postIts.find(p => p.id === id);
+  if (!p) return;
+  p.minimised = !p.minimised;
+  const el = document.getElementById(id);
+  if (el) {
+    el.classList.toggle('minimised', p.minimised);
+    el.querySelector('.minimise-btn').textContent = p.minimised ? '□' : '─';
+  }
+  savePostIts();
 }
 
 function postitToTask(id) {
