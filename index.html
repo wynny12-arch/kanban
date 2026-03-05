@@ -2513,19 +2513,14 @@ function savePostIts() {
 }
 
 function addPostIt() {
-  const _pi = postIts[0];
-  showToast(`hidden:${_pi?.hidden} text:'${(_pi?.text||'').substring(0,12)}'`);
-  // purge any empty hidden notes
-  postIts = postIts.filter(p => !p.hidden || (p.text && p.text.trim()));
-
-  // if hidden notes exist, show them
-  const hidden = postIts.filter(p => p.hidden);
-  if (hidden.length) {
-    hidden.forEach(p => { p.hidden = false; mountPostIt(p); });
+  // show any notes with text that aren't already visible in the DOM
+  const toShow = postIts.filter(p => p.text && p.text.trim() && !document.getElementById(p.id));
+  if (toShow.length) {
+    toShow.forEach(p => { p.hidden = false; mountPostIt(p); });
     savePostIts();
     return;
   }
-  // nothing found — create a new note
+  // all notes already showing or none exist — create a new note
   const id = 'pi_' + Date.now();
   const cx = window.innerWidth / 2 - 110 + (Math.random() - .5) * 120;
   const cy = window.innerHeight / 2 - 80 + (Math.random() - .5) * 80;
