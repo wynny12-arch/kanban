@@ -2537,8 +2537,11 @@ function mountPostIt(p) {
   const el = document.createElement('div');
   el.className = 'postit';
   el.id = p.id;
-  el.style.left    = p.x + 'px';
-  el.style.top     = p.y + 'px';
+  // clamp position so notes saved on a wider/taller screen appear on-screen here
+  const cx = Math.max(0, Math.min(p.x, window.innerWidth  - 240));
+  const cy = Math.max(0, Math.min(p.y, window.innerHeight - 160));
+  el.style.left    = cx + 'px';
+  el.style.top     = cy + 'px';
   el.style.background = p.color;
   el.style.transform = `rotate(${p.rot}deg)`;
 
