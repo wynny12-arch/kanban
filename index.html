@@ -3004,7 +3004,7 @@ let pendingShare = null;
 
 function handleShareTarget() {
   const p = new URLSearchParams(window.location.search);
-  if (p.toString()) showToast('share params: ' + p.toString().slice(0, 80));
+  if (p.toString()) showToast(`t:${(p.get('title')||'').slice(0,30)} | u:${(p.get('url')||'').slice(0,30)} | tx:${(p.get('text')||'').slice(0,30)}`);
   const rawText = p.get('text') || '';
   // Chrome sometimes sends the URL in 'text' rather than 'url'
   const url   = p.get('url') || (rawText.startsWith('http') ? rawText : '');
