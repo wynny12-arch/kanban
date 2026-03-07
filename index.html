@@ -2109,6 +2109,11 @@ function stateForCloud() {
       }
     })
   ));
+  // include credentials so they restore automatically on fresh install
+  s._config = {
+    ai:      { apiKey: aiConfig.apiKey || '' },
+    storage: { url: storageConfig.url || '', anonKey: storageConfig.anonKey || '' }
+  };
   return s;
 }
 
@@ -2184,6 +2189,19 @@ async function syncPull() {
     if (!res.ok) throw new Error(res.status);
     const data = await res.json();
     mergeCloudState(data.record);
+    // restore credentials on fresh install (only if not already set locally)
+    const cfg = data.record._config || {};
+    if (cfg.ai?.apiKey && !aiConfig.apiKey) {
+      aiConfig.apiKey = cfg.ai.apiKey;
+      saveAiConfigData();
+      updateAiDot(true);
+    }
+    if (cfg.storage?.url && !storageConfig.url) {
+      storageConfig.url     = cfg.storage.url;
+      storageConfig.anonKey = cfg.storage.anonKey || '';
+      saveStorageConfigData();
+      updateStorageDot(supEnabled());
+    }
     // sync postIts global from pulled state, park all as hidden
     postIts = (state.postIts || []).filter(p => p.text && p.text.trim()).map(p => ({...p, hidden:true}));
     state.postIts = postIts;
