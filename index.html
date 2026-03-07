@@ -3004,7 +3004,6 @@ let pendingShare = null;
 
 function handleShareTarget() {
   const p = new URLSearchParams(window.location.search);
-  if (p.toString()) { document.getElementById('share-preview-url').textContent = 'RAW: ' + decodeURIComponent(p.toString()); }
   const rawText = p.get('text') || '';
   // Chrome sometimes sends the URL in 'text' rather than 'url'
   const url   = p.get('url') || (rawText.startsWith('http') ? rawText : '');
@@ -3013,7 +3012,8 @@ function handleShareTarget() {
   pendingShare = { url, title };
   history.replaceState({}, '', location.pathname);
   document.getElementById('share-preview-title').textContent = title || '(no title)';
-  document.getElementById('share-preview-url').textContent   = url;
+  // show raw params for debugging
+  document.getElementById('share-preview-url').textContent = 'RAW: ' + p.toString();
   document.getElementById('share-overlay').classList.add('open');
 }
 
