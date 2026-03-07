@@ -258,8 +258,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
   border-radius:16px;padding:26px;width:440px;max-width:calc(100vw - 32px);
   box-shadow:0 25px 60px var(--shadow);
   transition:background .2s;
+  display:flex;flex-direction:column;
+  max-height:calc(100vh - 48px);
 }
-.modal h2{font-size:1rem;font-weight:700;margin-bottom:18px;color:var(--text);}
+.modal h2{font-size:1rem;font-weight:700;margin-bottom:18px;color:var(--text);flex-shrink:0;}
 .field{display:flex;flex-direction:column;gap:5px;}
 .field label{font-size:.73rem;font-weight:600;text-transform:uppercase;letter-spacing:.6px;color:var(--text2);}
 .field input,.field textarea,.field select{
@@ -272,8 +274,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
 .field select option{background:var(--surface);}
 .modal-row{display:flex;gap:12px;}
 .modal-row .field{flex:1;}
-.modal-fields{display:flex;flex-direction:column;gap:14px;}
-.modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:20px;}
+.modal-fields{display:flex;flex-direction:column;gap:14px;overflow-y:auto;-webkit-overflow-scrolling:touch;flex:1;padding-right:2px;}
+.modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:20px;flex-shrink:0;}
 .btn-primary{
   background:var(--accent);color:#fff;padding:8px 20px;
   border-radius:8px;border:none;cursor:pointer;font-size:.85rem;
