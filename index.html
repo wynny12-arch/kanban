@@ -334,6 +334,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
 a.attach-badge{color:var(--accent);text-decoration:none;}
 a.attach-badge:hover{opacity:.8;}
 #modal-links-list{max-height:150px;overflow-y:scroll;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;}
+.link-search-result-badge{display:inline-block;background:var(--accent);color:#fff;font-size:.68rem;padding:1px 6px;border-radius:99px;margin-left:6px;vertical-align:middle;}
+.modal-link-row.dim{opacity:.38;}
 .modal-link-row{display:flex;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:5px 8px;margin-bottom:4px;}
 .modal-link-row a{flex:1;font-size:.78rem;color:var(--accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-decoration:none;}
 .modal-link-row button{background:none;border:none;cursor:pointer;color:var(--muted);font-size:.85rem;padding:0 2px;flex-shrink:0;}
@@ -758,6 +760,11 @@ a.attach-badge:hover{opacity:.8;}
       <div class="field">
         <label>Links</label>
         <div id="modal-links-list"></div>
+        <div id="modal-links-search-row" style="display:none;gap:6px;margin-top:6px;margin-bottom:4px">
+          <input id="m-link-search" type="text" placeholder="e.g. claude vibe coding…" style="flex:1" onkeydown="if(event.key==='Enter'){event.preventDefault();searchModalLinks()}"/>
+          <button type="button" class="btn-primary" onclick="searchModalLinks()" id="link-search-btn" style="flex-shrink:0">✨ Find</button>
+          <button type="button" class="btn" onclick="clearLinkSearch()" id="link-search-clear" style="display:none;flex-shrink:0">✕</button>
+        </div>
         <div style="display:flex;gap:6px;margin-top:6px">
           <input id="m-link-input" type="url" placeholder="https://…" style="flex:1" onkeydown="if(event.key==='Enter'){event.preventDefault();addModalLink()}"/>
           <button type="button" class="btn" onclick="addModalLink()" style="flex-shrink:0">+ Add</button>
@@ -1340,11 +1347,14 @@ function activeCol() { return 'todo'; }
 
 function openModal(col) {
   modalCol = col; modalEditId = null; modalTags = []; modalLinks = []; modalAttachments = []; modalPendingDeletes = [];
+  linkSearchResults = null;
   document.getElementById('modal-heading').textContent = 'New Task';
   document.getElementById('modal-save-btn').textContent = 'Add Task';
   document.getElementById('m-title').value = '';
   document.getElementById('m-desc').value  = '';
   document.getElementById('m-link-input').value = '';
+  document.getElementById('m-link-search').value = '';
+  document.getElementById('link-search-clear').style.display = 'none';
   document.getElementById('m-priority').value = 'none';
   renderModalLinks();
   document.getElementById('m-due').value   = '';
@@ -1360,6 +1370,7 @@ function openModal(col) {
 function openModalEdit(id) {
   const task = board().tasks.find(t => t.id === id); if (!task) return;
   modalEditId = id; modalCol = task.col; modalTags = [...(task.tags||[])];
+  linkSearchResults = null;
   // migrate old single link to array
   const existingLinks = task.links || (task.link ? [{ url: task.link, title: '' }] : []);
   modalLinks = existingLinks.map(l => ({...l}));
@@ -1370,6 +1381,8 @@ function openModalEdit(id) {
   document.getElementById('m-title').value = task.title;
   document.getElementById('m-desc').value  = task.desc || '';
   document.getElementById('m-link-input').value = '';
+  document.getElementById('m-link-search').value = '';
+  document.getElementById('link-search-clear').style.display = 'none';
   document.getElementById('m-priority').value = task.priority || 'none';
   renderModalLinks();
   document.getElementById('m-due').value   = task.due || '';
@@ -1442,13 +1455,22 @@ async function saveModal() {
 }
 
 /* ─── Modal links ───────────────────────────────────────── */
-function renderModalLinks() {
+let linkSearchResults = null; // null = no search active; array of indices = filtered
+
+function renderModalLinks(highlightIndices) {
   const list = document.getElementById('modal-links-list');
   list.innerHTML = '';
+  // show/hide AI search row depending on whether there are links
+  const searchRow = document.getElementById('modal-links-search-row');
+  if (searchRow) searchRow.style.display = modalLinks.length > 1 ? 'flex' : 'none';
+  const activeResults = highlightIndices !== undefined ? highlightIndices : linkSearchResults;
   modalLinks.forEach((l, i) => {
     const row = document.createElement('div');
-    row.className = 'modal-link-row';
-    row.innerHTML = `<a href="${escHtml(l.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${escHtml(l.title || l.url)}</a><button onclick="removeModalLink(${i})" title="Remove">✕</button>`;
+    const dimmed = activeResults && !activeResults.includes(i);
+    row.className = 'modal-link-row' + (dimmed ? ' dim' : '');
+    const badge = (activeResults && activeResults.includes(i))
+      ? `<span class="link-search-result-badge">match</span>` : '';
+    row.innerHTML = `<a href="${escHtml(l.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${escHtml(l.title || l.url)}${badge}</a><button onclick="removeModalLink(${i})" title="Remove">✕</button>`;
     list.appendChild(row);
   });
 }
@@ -1459,12 +1481,55 @@ function addModalLink(url, title) {
   if (!u || !u.startsWith('http')) { inp.focus(); return; }
   modalLinks.push({ url: u, title: title || '' });
   inp.value = '';
+  linkSearchResults = null;
+  document.getElementById('link-search-clear').style.display = 'none';
   renderModalLinks();
 }
 
 function removeModalLink(i) {
   modalLinks.splice(i, 1);
+  // if search was active, rerun or clear if nothing matches anymore
+  if (linkSearchResults) {
+    linkSearchResults = linkSearchResults.filter(idx => idx !== i).map(idx => idx > i ? idx - 1 : idx);
+    if (!linkSearchResults.length) { linkSearchResults = null; document.getElementById('link-search-clear').style.display = 'none'; }
+  }
   renderModalLinks();
+}
+
+function clearLinkSearch() {
+  linkSearchResults = null;
+  document.getElementById('m-link-search').value = '';
+  document.getElementById('link-search-clear').style.display = 'none';
+  renderModalLinks();
+}
+
+async function searchModalLinks() {
+  if (!modalLinks.length) return;
+  const query = document.getElementById('m-link-search').value.trim();
+  if (!query) return;
+  if (!aiConfig.apiKey) { showToast('Add your Claude API key via AI Settings in the sidebar.'); return; }
+  const btn = document.getElementById('link-search-btn');
+  btn.disabled = true; btn.textContent = '…';
+  try {
+    const linksJson = JSON.stringify(modalLinks.map((l, i) => ({ index: i, title: l.title || '', url: l.url })));
+    const prompt = `You are a link search assistant. The user has a list of saved article links and wants to find relevant ones.\n\nUser query: "${query}"\n\nLinks list (JSON):\n${linksJson}\n\nReturn ONLY a JSON array of the integer indices of matching links, ordered by relevance (most relevant first). Be flexible — match on keywords, topics, partial words, or inferred intent. If nothing matches, return []. Example response: [2,0,4]`;
+    const resp = await callClaudeAPI(aiConfig.apiKey, {
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 200,
+      messages: [{ role: 'user', content: prompt }]
+    });
+    const text = resp.content?.[0]?.text?.trim() || '[]';
+    const match = text.match(/\[[\d,\s]*\]/);
+    const indices = match ? JSON.parse(match[0]) : [];
+    linkSearchResults = indices.filter(n => Number.isInteger(n) && n >= 0 && n < modalLinks.length);
+    document.getElementById('link-search-clear').style.display = linkSearchResults.length ? '' : 'none';
+    renderModalLinks();
+    if (!linkSearchResults.length) showToast('No matching links found');
+  } catch(e) {
+    showToast('Search failed: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '✨ Find';
+  }
 }
 
 /* ─── Tags input ────────────────────────────────────────── */
