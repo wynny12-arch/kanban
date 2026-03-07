@@ -1120,11 +1120,10 @@ function buildCard(task) {
 
   // migrate old single link
   const taskLinks = task.links || (task.link ? [{ url: task.link, title: '' }] : []);
-  const linkBadges = taskLinks.map((l, i) =>
-    `<a class="attach-badge" href="${escHtml(l.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">🔗 ${l.title ? escHtml(l.title.slice(0,20)) : 'Link ' + (i+1)}</a>`
-  ).join('');
-  const metaHtml = (tagsHtml || dueHtml || emailBadge || fileBadge || linkBadges)
-    ? `<div class="card-meta">${tagsHtml}${dueHtml}${emailBadge}${fileBadge}${linkBadges}</div>` : '';
+  const linkBadge = taskLinks.length
+    ? `<span class="attach-badge">🔗 ${taskLinks.length}</span>` : '';
+  const metaHtml = (tagsHtml || dueHtml || emailBadge || fileBadge || linkBadge)
+    ? `<div class="card-meta">${tagsHtml}${dueHtml}${emailBadge}${fileBadge}${linkBadge}</div>` : '';
 
   card.innerHTML = `
     <div class="card-top">
