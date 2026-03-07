@@ -3004,8 +3004,10 @@ let pendingShare = null;
 
 function handleShareTarget() {
   const p = new URLSearchParams(window.location.search);
-  const url   = p.get('url')   || '';
-  const title = p.get('title') || p.get('text') || '';
+  const rawText = p.get('text') || '';
+  // Chrome sometimes sends the URL in 'text' rather than 'url'
+  const url   = p.get('url') || (rawText.startsWith('http') ? rawText : '');
+  const title = p.get('title') || (!rawText.startsWith('http') ? rawText : '');
   if (!url && !title) return;
   pendingShare = { url, title };
   history.replaceState({}, '', location.pathname);
