@@ -109,7 +109,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
   transition:background .2s,border-color .2s;
 }
 .topbar-title{font-size:1.1rem;font-weight:700;white-space:nowrap;}
-.search-wrap{flex:1;max-width:360px;display:flex;align-items:center;gap:4px;}
+.search-wrap{flex:1;max-width:360px;display:flex;align-items:center;gap:4px;position:relative;}
 .search-inner{position:relative;flex:1;}
 .search-inner svg{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted);}
 .search-input{
@@ -124,6 +124,19 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
 #btn-board-ai-search.active{background:var(--accent);border-color:var(--accent);color:#fff;}
 #btn-board-search-clear{flex-shrink:0;font-size:.78rem;padding:5px 8px;border-radius:7px;cursor:pointer;background:var(--surface2);border:1px solid var(--border);color:var(--muted);display:none;}
 #btn-board-search-clear:hover{background:var(--surface2);border-color:var(--danger,#e55);color:var(--danger,#e55);}
+#board-answer-panel{
+  display:none;position:absolute;top:calc(100% + 8px);left:0;right:0;z-index:999;
+  background:var(--surface);border:1px solid var(--border);border-radius:10px;
+  padding:14px 16px;box-shadow:0 8px 24px rgba(0,0,0,.18);font-size:.85rem;
+  line-height:1.6;color:var(--text);max-height:320px;overflow-y:auto;
+}
+#board-answer-panel.visible{display:block;}
+#board-answer-panel .bap-close{float:right;background:none;border:none;cursor:pointer;color:var(--muted);font-size:1rem;line-height:1;margin-left:8px;padding:0;}
+#board-answer-panel .bap-close:hover{color:var(--text);}
+#board-answer-panel p{margin:0 0 8px;}
+#board-answer-panel p:last-child{margin:0;}
+#board-answer-panel strong{color:var(--accent);}
+#board-answer-panel .bap-label{font-size:.72rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;display:block;}
 .filter-tags-wrap{display:flex;gap:6px;flex-wrap:wrap;align-items:center;}
 .filter-pill{
   padding:3px 10px;border-radius:99px;font-size:.75rem;font-weight:500;
@@ -689,8 +702,13 @@ a.attach-badge:hover{opacity:.8;}
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         <input class="search-input" id="search-input" placeholder="Search tasks or ask in plain English…" oninput="onBoardSearchInput()" onkeydown="if(event.key==='Enter'){event.preventDefault();searchBoardAI();}">
       </div>
-      <button id="btn-board-ai-search" title="Natural language search with Claude" onclick="searchBoardAI()">✨</button>
-      <button id="btn-board-search-clear" title="Clear search" onclick="clearBoardSearch()">✕</button>
+      <button id="btn-board-ai-search" title="Ask Claude or search" onclick="searchBoardAI()">✨</button>
+      <button id="btn-board-search-clear" title="Clear" onclick="clearBoardSearch()">✕</button>
+      <div id="board-answer-panel">
+        <button class="bap-close" onclick="closeBoardAnswer()" title="Close">✕</button>
+        <span class="bap-label">Claude</span>
+        <div id="board-answer-text"></div>
+      </div>
     </div>
     <div class="filter-tags-wrap" id="priority-filters">
       <button class="filter-pill active" data-pri="all"   onclick="setPriFilter('all')">All</button>
@@ -1087,12 +1105,12 @@ function renderStats() {
 let nlSearchIds = null; // null = inactive; Set of task ids = AI filter active
 
 function onBoardSearchInput() {
-  // Typing clears any active AI filter so plain text search takes over
   if (nlSearchIds !== null) {
     nlSearchIds = null;
     document.getElementById('btn-board-ai-search').classList.remove('active');
     document.getElementById('btn-board-search-clear').style.display = 'none';
   }
+  closeBoardAnswer();
   renderBoard();
 }
 
@@ -1101,13 +1119,33 @@ function clearBoardSearch() {
   document.getElementById('search-input').value = '';
   document.getElementById('btn-board-ai-search').classList.remove('active');
   document.getElementById('btn-board-search-clear').style.display = 'none';
+  closeBoardAnswer();
   renderBoard();
 }
+
+function closeBoardAnswer() {
+  document.getElementById('board-answer-panel').classList.remove('visible');
+}
+
+function showBoardAnswer(html) {
+  document.getElementById('board-answer-text').innerHTML = html;
+  document.getElementById('board-answer-panel').classList.add('visible');
+  document.getElementById('btn-board-search-clear').style.display = '';
+}
+
+// Close answer panel when clicking outside
+document.addEventListener('click', function(e) {
+  const panel = document.getElementById('board-answer-panel');
+  const wrap  = document.querySelector('.search-wrap');
+  if (panel && panel.classList.contains('visible') && !wrap.contains(e.target)) {
+    closeBoardAnswer();
+  }
+});
 
 async function searchBoardAI() {
   const b = board(); if (!b) return;
   const query = document.getElementById('search-input').value.trim();
-  if (!query) { showToast('Type something to search for.'); return; }
+  if (!query) { showToast('Type a question or search term.'); return; }
   if (!aiConfig.apiKey) { showToast('Add your Claude API key via AI Settings in the sidebar.'); return; }
 
   const btn = document.getElementById('btn-board-ai-search');
@@ -1116,23 +1154,53 @@ async function searchBoardAI() {
   try {
     const tasksJson = JSON.stringify(b.tasks.map((t, i) => ({
       index: i, id: t.id, title: t.title,
-      desc: t.desc || '', tags: t.tags || [], col: t.col, priority: t.priority || 'none'
+      desc: t.desc || '', tags: t.tags || [],
+      col: t.col, priority: t.priority || 'none'
     })));
-    const prompt = `You are a task search assistant. The user has a kanban board and wants to find relevant tasks using natural language.\n\nUser query: "${query}"\n\nTasks (JSON):\n${tasksJson}\n\nReturn ONLY a JSON array of the integer indices of matching tasks, ordered by relevance. Be flexible — match on keywords, topics, intent, column names, priority levels, or tags. If nothing matches, return []. Example: [2,0,4]`;
+
+    const prompt = `You are an assistant for a Kanban board app. The user has typed: "${query}"
+
+Board name: "${b.name}"
+Tasks (JSON):
+${tasksJson}
+
+Decide whether the user is:
+A) Asking a QUESTION or wanting a summary/analysis — e.g. "what's overdue?", "how many high priority tasks?", "give me a summary", "what should I focus on?"
+B) Searching/filtering tasks — e.g. "show design tasks", "anything about login", "high priority bugs"
+
+If A — answer conversationally in plain English. Be concise (2-5 sentences). You have full context of all tasks. Return JSON: {"mode":"answer","text":"your answer here"}
+
+If B — return the indices of matching tasks. Return JSON: {"mode":"filter","indices":[0,2,4]}
+
+Return ONLY valid JSON, nothing else.`;
+
     const resp = await callClaudeAPI(aiConfig.apiKey, {
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 200,
+      max_tokens: 400,
       messages: [{ role: 'user', content: prompt }]
     });
-    const text = resp.content?.[0]?.text?.trim() || '[]';
-    const match = text.match(/\[[\d,\s]*\]/);
-    const indices = match ? JSON.parse(match[0]) : [];
-    const validIndices = indices.filter(n => Number.isInteger(n) && n >= 0 && n < b.tasks.length);
-    nlSearchIds = new Set(validIndices.map(i => b.tasks[i].id));
-    btn.classList.add('active');
-    document.getElementById('btn-board-search-clear').style.display = '';
-    renderBoard();
-    if (!nlSearchIds.size) showToast('No matching tasks found');
+
+    const raw = resp.content?.[0]?.text?.trim() || '{}';
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    const result = jsonMatch ? JSON.parse(jsonMatch[0]) : {};
+
+    if (result.mode === 'answer') {
+      nlSearchIds = null;
+      renderBoard();
+      // Convert newlines to paragraphs
+      const html = result.text.split(/\n+/).filter(Boolean)
+        .map(p => `<p>${p}</p>`).join('');
+      showBoardAnswer(html);
+      btn.classList.add('active');
+    } else {
+      closeBoardAnswer();
+      const indices = (result.indices || []).filter(n => Number.isInteger(n) && n >= 0 && n < b.tasks.length);
+      nlSearchIds = new Set(indices.map(i => b.tasks[i].id));
+      btn.classList.add('active');
+      document.getElementById('btn-board-search-clear').style.display = '';
+      renderBoard();
+      if (!nlSearchIds.size) showToast('No matching tasks found');
+    }
   } catch(e) {
     showToast('Search failed: ' + e.message);
   } finally {
