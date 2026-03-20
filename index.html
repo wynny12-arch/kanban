@@ -1105,12 +1105,17 @@ function renderStats() {
 let nlSearchIds = null; // null = inactive; Set of task ids = AI filter active
 
 function onBoardSearchInput() {
+  // Clear any active AI result when the user edits the query,
+  // but do NOT live-filter — wait for Enter / ✨
   if (nlSearchIds !== null) {
     nlSearchIds = null;
     document.getElementById('btn-board-ai-search').classList.remove('active');
-    document.getElementById('btn-board-search-clear').style.display = 'none';
   }
   closeBoardAnswer();
+  // Only show clear button if there's text but no active AI result
+  const hasText = document.getElementById('search-input').value.trim().length > 0;
+  document.getElementById('btn-board-search-clear').style.display = hasText ? '' : 'none';
+  // Restore full board while user is still typing
   renderBoard();
 }
 
@@ -1161,14 +1166,15 @@ async function searchBoardAI() {
     const prompt = `You are an assistant for a Kanban board app. The user has typed: "${query}"
 
 Board name: "${b.name}"
+Column names: "todo" = To Do, "progress" = In Progress, "done" = Done/Completed
 Tasks (JSON):
 ${tasksJson}
 
 Decide whether the user is:
-A) Asking a QUESTION or wanting a summary/analysis — e.g. "what's overdue?", "how many high priority tasks?", "give me a summary", "what should I focus on?"
-B) Searching/filtering tasks — e.g. "show design tasks", "anything about login", "high priority bugs"
+A) Asking a QUESTION or wanting a summary/analysis — e.g. "how many completed tasks?", "what's in progress?", "give me a summary", "what should I focus on?", "how many high priority?"
+B) Searching/filtering to show specific task cards — e.g. "show design tasks", "anything about login", "high priority bugs"
 
-If A — answer conversationally in plain English. Be concise (2-5 sentences). You have full context of all tasks. Return JSON: {"mode":"answer","text":"your answer here"}
+If A — answer conversationally in plain English using the task data above. Be concise and specific with numbers/titles where relevant. Return JSON: {"mode":"answer","text":"your answer here"}
 
 If B — return the indices of matching tasks. Return JSON: {"mode":"filter","indices":[0,2,4]}
 
@@ -1211,14 +1217,14 @@ Return ONLY valid JSON, nothing else.`;
 /* ─── Render board ──────────────────────────────────────── */
 function renderBoard() {
   const b = board(); if (!b) return;
-  const q   = document.getElementById('search-input').value.trim().toLowerCase();
   document.getElementById('topbar-title').textContent = b.name;
 
   COLS.forEach(col => {
     const PRI_ORDER = { high:0, med:1, low:2, none:3 };
     let tasks = b.tasks.filter(t => t.col === col);
-    if (nlSearchIds !== null) tasks = tasks.filter(t => nlSearchIds.has(t.id));
-    else if (q)               tasks = tasks.filter(t => t.title.toLowerCase().includes(q) || (t.desc||'').toLowerCase().includes(q) || (t.tags||[]).some(tag => tag.toLowerCase().includes(q)));
+    if (nlSearchIds !== null) {
+      tasks = tasks.filter(t => nlSearchIds.has(t.id));
+    }
     if (priFilter !== 'all') tasks = tasks.filter(t => (t.priority||'none') === priFilter);
     if (sortMode === 'priority') tasks.sort((a,b) => PRI_ORDER[a.priority||'none'] - PRI_ORDER[b.priority||'none']);
 
@@ -1226,7 +1232,7 @@ function renderBoard() {
     const container = document.getElementById(`cards-${col}`);
     container.innerHTML = '';
     if (!tasks.length) {
-      container.innerHTML = `<div class="empty-col">${nlSearchIds!==null||q||priFilter!=='all'?'No matching tasks':'No tasks yet'}</div>`;
+      container.innerHTML = `<div class="empty-col">${nlSearchIds!==null||priFilter!=='all'?'No matching tasks':'No tasks yet'}</div>`;
     } else {
       tasks.forEach(task => container.appendChild(buildCard(task)));
     }
