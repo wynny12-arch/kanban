@@ -749,6 +749,7 @@ a.attach-badge:hover{opacity:.8;}
     </div>
     <div class="topbar-actions">
       <button class="icon-btn widget-mobile-btn" onclick="openWidgetSheet()">📊 Live</button>
+      <button class="icon-btn widget-mobile-btn" onclick="openSyncModal()" title="Cloud sync"><span class="sync-dot off" id="sync-dot-mobile"></span> Sync</button>
       <button class="icon-btn" onclick="addPostIt()" title="Add sticky note">📝 Post-it</button>
       <button class="icon-btn" id="sort-toggle-btn" onclick="toggleSortMode()" title="Switch sort mode">⇅ Priority</button>
       <button class="icon-btn" onclick="openModal(activeCol())">
@@ -2454,8 +2455,10 @@ function mergeCloudState(cloud) {
 
 function updateSyncDot(status) {
   syncStatus = status;
-  const dot = document.getElementById('sync-dot');
-  if (dot) dot.className = `sync-dot ${status}`;
+  ['sync-dot', 'sync-dot-mobile'].forEach(id => {
+    const dot = document.getElementById(id);
+    if (dot) dot.className = `sync-dot ${status}`;
+  });
 }
 
 async function syncPush() {
