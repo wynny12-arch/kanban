@@ -1553,9 +1553,11 @@ function undoDelete() {
 }
 
 /* ─── Modal ─────────────────────────────────────────────── */
+let _modalScrollY = 0;
 function activeCol() { return 'todo'; }
 
 function openModal(col) {
+  _modalScrollY = window.scrollY;
   modalCol = col; modalEditId = null; modalTags = []; modalLinks = []; modalAttachments = []; modalPendingDeletes = [];
   linkSearchResults = null;
   document.getElementById('modal-heading').textContent = 'New Task';
@@ -1578,6 +1580,7 @@ function openModal(col) {
 }
 
 function openModalEdit(id) {
+  _modalScrollY = window.scrollY;
   const task = board().tasks.find(t => t.id === id); if (!task) return;
   modalEditId = id; modalCol = task.col; modalTags = [...(task.tags||[])];
   linkSearchResults = null;
@@ -1608,7 +1611,8 @@ function openModalEdit(id) {
 function closeModal() {
   document.getElementById('modal-overlay').classList.remove('open');
   modalEditId = null;
-  modalPendingDeletes = []; // user cancelled — discard pending deletes
+  modalPendingDeletes = [];
+  window.scrollTo(0, _modalScrollY);
 }
 
 function onOverlayClick(e) { if (e.target.id === 'modal-overlay') closeModal(); }
