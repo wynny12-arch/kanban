@@ -615,11 +615,32 @@ a.attach-badge:hover{opacity:.8;}
 ::-webkit-scrollbar-track{background:transparent;}
 ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:99px;}
 
+/* Mobile column tabs */
+.col-tabs{display:none;gap:6px;padding:8px 12px;background:var(--bg);flex-shrink:0;}
+.col-tab{
+  flex:1;padding:7px 4px;border-radius:8px;border:1px solid var(--border);
+  background:var(--surface);color:var(--muted);font-size:.75rem;font-weight:600;
+  text-align:center;cursor:pointer;transition:background .15s,color .15s,border-color .15s;
+  white-space:nowrap;
+}
+.col-tab.active{background:var(--accent-bg);color:var(--accent);border-color:var(--accent);}
+.tab-count{font-size:.68rem;font-weight:700;margin-left:3px;opacity:.65;}
+
 @media(max-width:700px){
   .sidebar{display:none;}
-  .board{flex-direction:column;min-width:0;}
-  .board-wrap{padding:12px;}
-  .column{min-width:0;}
+  .col-tabs{display:flex;}
+  .board{flex-direction:row;min-width:0;gap:0;}
+  .board-wrap{
+    padding:0;overflow-x:scroll;overflow-y:hidden;
+    scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scrollbar-width:none;
+  }
+  .board-wrap::-webkit-scrollbar{display:none;}
+  .column{
+    scroll-snap-align:start;min-width:100vw;width:100vw;
+    box-sizing:border-box;border-radius:0;
+    border-left:none;border-right:none;border-top:none;
+    padding:14px 14px 80px;
+  }
   .statsbar{flex-wrap:wrap;gap:10px;padding:8px 12px;}
   .topbar{padding:10px 12px;gap:8px;flex-wrap:wrap;}
   .search-wrap{max-width:100%;flex:1 1 100%;order:3;}
@@ -730,6 +751,13 @@ a.attach-badge:hover{opacity:.8;}
 
   <!-- Stats bar -->
   <div class="statsbar" id="statsbar"></div>
+
+  <!-- Mobile column tabs -->
+  <div class="col-tabs" id="col-tabs">
+    <button class="col-tab active" data-col="todo"     onclick="scrollToCol('todo')">To Do <span class="tab-count" id="tab-count-todo"></span></button>
+    <button class="col-tab"        data-col="progress" onclick="scrollToCol('progress')">In Progress <span class="tab-count" id="tab-count-progress"></span></button>
+    <button class="col-tab"        data-col="done"     onclick="scrollToCol('done')">Done <span class="tab-count" id="tab-count-done"></span></button>
+  </div>
 
   <!-- Board -->
   <div class="board-wrap">
@@ -1257,6 +1285,8 @@ function renderBoard() {
     if (sortMode === 'priority') tasks.sort((a,b) => PRI_ORDER[a.priority||'none'] - PRI_ORDER[b.priority||'none']);
 
     document.getElementById(`count-${col}`).textContent = tasks.length;
+    const tabCount = document.getElementById(`tab-count-${col}`);
+    if (tabCount) tabCount.textContent = tasks.length;
     const container = document.getElementById(`cards-${col}`);
     container.innerHTML = '';
     if (!tasks.length) {
@@ -2463,6 +2493,32 @@ async function syncPush() {
   } catch { updateSyncDot('error'); }
 }
 
+/* ─── Mobile Column Tabs ─────────────────────────────────── */
+function scrollToCol(col) {
+  if (window.innerWidth > 700) return;
+  const colMap = { todo: 0, progress: 1, done: 2 };
+  const wrap = document.querySelector('.board-wrap');
+  if (wrap) wrap.scrollTo({ left: colMap[col] * window.innerWidth, behavior: 'smooth' });
+}
+
+let _colTabObserver = null;
+function initColTabs() {
+  if (window.innerWidth > 700) return;
+  if (_colTabObserver) _colTabObserver.disconnect();
+  const wrap = document.querySelector('.board-wrap');
+  _colTabObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
+        const col = entry.target.dataset.col;
+        document.querySelectorAll('.col-tab').forEach(t => t.classList.remove('active'));
+        const tab = document.querySelector(`.col-tab[data-col="${col}"]`);
+        if (tab) tab.classList.add('active');
+      }
+    });
+  }, { threshold: 0.5, root: wrap });
+  document.querySelectorAll('.column').forEach(c => _colTabObserver.observe(c));
+}
+
 /* ─── Local Backups ──────────────────────────────────────── */
 const MAX_BACKUPS = 5;
 
@@ -3444,6 +3500,7 @@ loadAiConfig();
 loadSortMode();
 loadPostIts();
 render();
+initColTabs();
 handleShareTarget();
 syncPull();
 initWidgets();
