@@ -873,10 +873,15 @@ a.attach-badge:hover{opacity:.8;}
         <strong>Your Bin ID — paste this on other devices</strong>
         <span id="sync-bin-display-val"></span>
       </div>
+      <div style="margin-top:14px">
+        <div style="font-size:.73rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:6px">Local Backups</div>
+        <div id="backup-list"></div>
+      </div>
     </div>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeSyncModal()">Close</button>
       <button class="btn-secondary" id="sync-pull-btn" onclick="manualPull()" style="display:none">↓ Pull latest</button>
+      <button class="btn-secondary" onclick="manualBackup()">💾 Back up now</button>
       <button class="btn-primary" id="sync-connect-btn" onclick="syncConnect()">Connect</button>
     </div>
   </div>
@@ -1104,6 +1109,25 @@ function renderStats() {
 /* ─── Board natural-language search ─────────────────────── */
 let nlSearchIds = null; // null = inactive; Set of task ids = AI filter active
 
+// Extract meaningful keywords from a query (strip common filler words)
+function extractKeywords(query) {
+  const stop = new Set(['find','show','me','all','tasks','task','that','contain','contains','with','have','having','about','mention','mentioning','the','a','an','is','are','in','on','and','or','any','some','list','get','give','which','what','where','these','those','this','include','including','has','do','does']);
+  return query.toLowerCase().replace(/[^\w\s]/g,' ').split(/\s+/).filter(w => w.length > 2 && !stop.has(w));
+}
+
+// Local text match — returns Set of task ids that contain any of the keywords
+function localMatchIds(tasks, query) {
+  const keywords = extractKeywords(query);
+  if (!keywords.length) return null;
+  const matched = new Set();
+  tasks.forEach(t => {
+    const linkText = (t.links||[]).flatMap(l => [l.title||'', l.url||'']);
+    const hay = [t.title, t.desc||'', ...(t.tags||[]), ...linkText].join(' ').toLowerCase();
+    if (keywords.some(kw => hay.includes(kw))) matched.add(t.id);
+  });
+  return matched;
+}
+
 function onBoardSearchInput() {
   // Clear any active AI result when the user edits the query,
   // but do NOT live-filter — wait for Enter / ✨
@@ -1160,7 +1184,8 @@ async function searchBoardAI() {
     const tasksJson = JSON.stringify(b.tasks.map((t, i) => ({
       index: i, id: t.id, title: t.title,
       desc: t.desc || '', tags: t.tags || [],
-      col: t.col, priority: t.priority || 'none'
+      col: t.col, priority: t.priority || 'none',
+      links: (t.links||[]).map(l => l.title || l.url || '')
     })));
 
     const prompt = `You are an assistant for a Kanban board app. The user has typed: "${query}"
@@ -1202,6 +1227,9 @@ Return ONLY valid JSON, nothing else.`;
       closeBoardAnswer();
       const indices = (result.indices || []).filter(n => Number.isInteger(n) && n >= 0 && n < b.tasks.length);
       nlSearchIds = new Set(indices.map(i => b.tasks[i].id));
+      // Merge with local keyword match so Claude can't miss exact text hits
+      const local = localMatchIds(b.tasks, query);
+      if (local) local.forEach(id => nlSearchIds.add(id));
       btn.classList.add('active');
       document.getElementById('btn-board-search-clear').style.display = '';
       renderBoard();
@@ -2435,8 +2463,72 @@ async function syncPush() {
   } catch { updateSyncDot('error'); }
 }
 
+/* ─── Local Backups ──────────────────────────────────────── */
+const MAX_BACKUPS = 5;
+
+function takeBackup(label) {
+  try {
+    const backups = loadBackups();
+    backups.unshift({ ts: Date.now(), label, state: JSON.parse(JSON.stringify(state)) });
+    if (backups.length > MAX_BACKUPS) backups.length = MAX_BACKUPS;
+    localStorage.setItem('kanban_backups', JSON.stringify(backups));
+  } catch {
+    // Quota exceeded — trim to 2 and retry
+    try {
+      const backups = loadBackups().slice(0, 2);
+      backups.unshift({ ts: Date.now(), label, state: JSON.parse(JSON.stringify(state)) });
+      localStorage.setItem('kanban_backups', JSON.stringify(backups));
+    } catch {}
+  }
+}
+
+function loadBackups() {
+  try { return JSON.parse(localStorage.getItem('kanban_backups') || '[]'); } catch { return []; }
+}
+
+function manualBackup() {
+  takeBackup('Manual backup');
+  renderBackups();
+  showToast('Backup saved');
+}
+
+function restoreBackup(ts) {
+  const backup = loadBackups().find(b => b.ts === ts);
+  if (!backup) return;
+  if (!confirm(`Restore backup from ${fmtBackupDate(ts)}?\nYour current board will be overwritten.`)) return;
+  state = backup.state;
+  localStorage.setItem('kanban_v2', JSON.stringify(state));
+  render();
+  closeSyncModal();
+  showToast('Board restored from backup');
+}
+
+function fmtBackupDate(ts) {
+  return new Date(ts).toLocaleString(undefined, { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+}
+
+function renderBackups() {
+  const container = document.getElementById('backup-list');
+  if (!container) return;
+  const backups = loadBackups();
+  if (!backups.length) {
+    container.innerHTML = '<span style="color:var(--muted);font-size:.75rem">No backups yet — one is saved automatically before each pull.</span>';
+    return;
+  }
+  container.innerHTML = backups.map(b => `
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border)">
+      <div>
+        <div style="font-size:.8rem">${fmtBackupDate(b.ts)}</div>
+        <div style="font-size:.7rem;color:var(--muted)">${b.label}</div>
+      </div>
+      <button class="btn-secondary" style="font-size:.72rem;padding:3px 10px" onclick="restoreBackup(${b.ts})">Restore</button>
+    </div>
+  `).join('');
+}
+
 async function syncPull() {
   if (!syncConfig.apiKey || !syncConfig.binId) return;
+  takeBackup('Before pull');
   updateSyncDot('syncing');
   try {
     const res = await fetch(`${JSONBIN}/b/${syncConfig.binId}/latest`, {
@@ -2486,6 +2578,7 @@ function openSyncModal() {
   syncMsg('');
   showBinDisplay(syncConfig.binId);
   document.getElementById('sync-pull-btn').style.display = (syncConfig.apiKey && syncConfig.binId) ? '' : 'none';
+  renderBackups();
   document.getElementById('sync-overlay').classList.add('open');
 }
 
@@ -2603,18 +2696,26 @@ function dataUrlToBlob(dataUrl) {
 
 async function uploadToSupabase(blobOrDataUrl, filename, mimeType, taskId) {
   const blob = (typeof blobOrDataUrl === 'string') ? dataUrlToBlob(blobOrDataUrl) : blobOrDataUrl;
+  if (!storageConfig.url || !storageConfig.url.startsWith('https://')) {
+    throw new Error('Supabase URL is missing or invalid — check Storage settings');
+  }
   const path = `${state.activeBoardId}/${taskId}/${uid()}/${filename}`;
   const endpoint = `${storageConfig.url}/storage/v1/object/attachments/${path}`;
-  const res = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${storageConfig.anonKey}`,
-      'apikey':        storageConfig.anonKey,
-      'Content-Type':  mimeType || 'application/octet-stream',
-      'x-upsert': 'true',
-    },
-    body: blob
-  });
+  let res;
+  try {
+    res = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${storageConfig.anonKey}`,
+        'apikey':        storageConfig.anonKey,
+        'Content-Type':  mimeType || 'application/octet-stream',
+        'x-upsert': 'true',
+      },
+      body: blob
+    });
+  } catch {
+    throw new Error('Cannot reach Supabase — project may be paused or URL is incorrect');
+  }
   if (!res.ok) {
     const msg = await res.text().catch(() => String(res.status));
     throw new Error(`Storage upload failed (${res.status}): ${msg}`);
