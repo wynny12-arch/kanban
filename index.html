@@ -749,7 +749,7 @@ a.attach-badge:hover{opacity:.8;}
     </div>
     <div class="topbar-actions">
       <button class="icon-btn widget-mobile-btn" onclick="openWidgetSheet()">📊 Live</button>
-      <button class="icon-btn widget-mobile-btn" onclick="openSyncModal()" title="Cloud sync"><span class="sync-dot off" id="sync-dot-mobile"></span> Sync</button>
+      <button class="icon-btn widget-mobile-btn" onclick="openSyncModal()" title="Status"><span class="sync-dot off" id="sync-dot-mobile" title="Cloud sync"></span><span class="sync-dot off" id="storage-dot-mobile" title="File storage"></span><span class="ai-dot off" id="ai-dot-mobile" title="AI"></span> Status</button>
       <button class="icon-btn" onclick="addPostIt()" title="Add sticky note">📝 Post-it</button>
       <button class="icon-btn" id="sort-toggle-btn" onclick="toggleSortMode()" title="Switch sort mode">⇅ Priority</button>
       <button class="icon-btn" onclick="openModal(activeCol())">
@@ -2822,8 +2822,10 @@ async function deleteFromSupabase(paths) {
 }
 
 function updateStorageDot(connected) {
-  const dot = document.getElementById('storage-dot');
-  if (dot) dot.className = `sync-dot ${connected ? 'synced' : 'off'}`;
+  ['storage-dot', 'storage-dot-mobile'].forEach(id => {
+    const dot = document.getElementById(id);
+    if (dot) dot.className = `sync-dot ${connected ? 'synced' : 'off'}`;
+  });
 }
 
 /* ── Storage modal ───────────────────────────────────────── */
@@ -2899,8 +2901,10 @@ function saveAiConfigData() {
 }
 
 function updateAiDot(on) {
-  const dot = document.getElementById('ai-dot');
-  if (dot) dot.className = `ai-dot ${on ? 'on' : 'off'}`;
+  ['ai-dot', 'ai-dot-mobile'].forEach(id => {
+    const dot = document.getElementById(id);
+    if (dot) dot.className = `ai-dot ${on ? 'on' : 'off'}`;
+  });
 }
 
 function openAiModal() {
