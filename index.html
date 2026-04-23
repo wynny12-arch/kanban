@@ -848,6 +848,12 @@ a.attach-badge:hover{opacity:.8;}
         </div>
         <div class="field"><label>Due date</label><input type="date" id="m-due"/></div>
       </div>
+      <div class="field" id="notify-field" style="display:none">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:400">
+          <input type="checkbox" id="m-notify" style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer" onchange="if(this.checked) requestNotifPermission()">
+          🔔 Notify me when this task is due
+        </label>
+      </div>
       <div class="field">
         <label>Tags</label>
         <div class="tags-input-wrap" id="tags-wrap" onclick="focusTagInput()">
@@ -1570,6 +1576,7 @@ function openModal(col) {
   document.getElementById('m-priority').value = 'none';
   renderModalLinks();
   document.getElementById('m-due').value   = '';
+  document.getElementById('m-notify').checked = false;
   document.getElementById('attach-input').value = '';
   document.getElementById('nl-input').value = '';
   document.getElementById('nl-msg').textContent = '';
@@ -1599,6 +1606,7 @@ function openModalEdit(id) {
   document.getElementById('m-priority').value = task.priority || 'none';
   renderModalLinks();
   document.getElementById('m-due').value   = task.due || '';
+  document.getElementById('m-notify').checked = !!(task.notify);
   document.getElementById('attach-input').value = '';
   document.getElementById('nl-input').value = '';
   document.getElementById('nl-msg').textContent = '';
@@ -1624,6 +1632,7 @@ async function saveModal() {
   const links    = [...modalLinks];
   const priority = document.getElementById('m-priority').value;
   const due      = document.getElementById('m-due').value;
+  const notify   = document.getElementById('m-notify').checked;
   const tags     = [...modalTags];
   const b        = board();
   const taskId   = modalEditId || uid();
@@ -1660,9 +1669,9 @@ async function saveModal() {
 
   if (modalEditId) {
     const task = b.tasks.find(t => t.id === modalEditId);
-    if (task) Object.assign(task, { title, desc, links, priority, due, tags, attachments });
+    if (task) Object.assign(task, { title, desc, links, priority, due, notify, tags, attachments });
   } else {
-    b.tasks.unshift({ id: taskId, col:modalCol, title, desc, links, priority, due, tags, attachments });
+    b.tasks.unshift({ id: taskId, col:modalCol, title, desc, links, priority, due, notify, tags, attachments });
     if (sortMode !== 'manual') { sortMode = 'manual'; localStorage.setItem('kanban_sort_mode', sortMode); updateSortBtn(); }
   }
   save(); render(); closeModal();
@@ -2507,6 +2516,60 @@ async function syncPush() {
     updateSyncDot('synced');
     setTimeout(() => updateSyncDot('idle'), 2000);
   } catch { updateSyncDot('error'); }
+}
+
+/* ─── Notifications ──────────────────────────────────────── */
+function initNotifications() {
+  if (!('Notification' in window)) return;
+  document.getElementById('notify-field').style.display = '';
+  checkDueNotifications();
+  setInterval(checkDueNotifications, 60 * 60 * 1000);
+}
+
+async function requestNotifPermission() {
+  if (Notification.permission === 'default') await Notification.requestPermission();
+}
+
+function getNotifiedToday() {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const d = JSON.parse(localStorage.getItem('kanban_notified_today') || '{}');
+    return d.date === today ? new Set(d.ids || []) : new Set();
+  } catch { return new Set(); }
+}
+
+function markNotified(id) {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const d = JSON.parse(localStorage.getItem('kanban_notified_today') || '{}');
+    const ids = d.date === today ? (d.ids || []) : [];
+    if (!ids.includes(id)) ids.push(id);
+    localStorage.setItem('kanban_notified_today', JSON.stringify({ date: today, ids }));
+  } catch {}
+}
+
+async function checkDueNotifications() {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  const today = new Date().toISOString().slice(0, 10);
+  const notified = getNotifiedToday();
+  const tasks = state.boards.flatMap(b => b.tasks);
+  for (const task of tasks) {
+    if (!task.notify || !task.due || task.col === 'done' || notified.has(task.id)) continue;
+    const isOverdue = task.due < today;
+    const isToday   = task.due === today;
+    if (!isToday && !isOverdue) continue;
+    const heading = isOverdue ? '⚠️ Task overdue' : '📅 Task due today';
+    const body    = task.title + (task.priority && task.priority !== 'none' ? ` · ${task.priority} priority` : '');
+    try {
+      if ('serviceWorker' in navigator) {
+        const reg = await navigator.serviceWorker.ready;
+        reg.showNotification(heading, { body, icon: '/kanban/icon-192.png', tag: task.id, renotify: false });
+      } else {
+        new Notification(heading, { body, icon: '/kanban/icon-192.png', tag: task.id });
+      }
+    } catch {}
+    markNotified(task.id);
+  }
 }
 
 /* ─── Mobile Sidebar Drawer ──────────────────────────────── */
@@ -3531,6 +3594,7 @@ loadSortMode();
 loadPostIts();
 render();
 initColTabs();
+initNotifications();
 handleShareTarget();
 syncPull();
 initWidgets();
