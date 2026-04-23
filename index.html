@@ -3371,7 +3371,7 @@ async function fetchWeather() {
 /* Exchange rates — frankfurter.app (no key needed) */
 async function fetchFX() {
   try {
-    const d = await fetch('https://api.frankfurter.app/latest?from=GBP&to=USD,EUR,TRY').then(r => r.json());
+    const d = await fetch('https://api.frankfurter.dev/v1/latest?from=GBP&to=USD,EUR,TRY').then(r => r.json());
     const r = d.rates;
     wBody('w-fx', `
       <div class="widget-row"><span>USD</span><span class="widget-val">${r.USD?.toFixed(4) ?? '—'}</span></div>
