@@ -2460,16 +2460,30 @@ function stateForCloud() {
   return s;
 }
 
-// When pulling from cloud, restore any local binary data we already have
+// When pulling from cloud, merge cloud state with local — keep all tasks from both
 function mergeCloudState(cloud) {
+  // Preserve local binary attachment data
   const localData = {};
   (state.boards||[]).forEach(b => (b.tasks||[]).forEach(t =>
     (t.attachments||[]).forEach(a => { if (a.data) localData[`${t.id}:${a.id}`] = a.data; })
   ));
+  // Find tasks that exist locally but not in cloud (added on this device since last sync)
+  const cloudTaskIds = new Set((cloud.boards||[]).flatMap(b => (b.tasks||[]).map(t => t.id)));
+  const localOnlyTasks = (state.boards||[]).flatMap(b =>
+    (b.tasks||[]).filter(t => !cloudTaskIds.has(t.id)).map(t => ({...t, _boardId: b.id}))
+  );
   state = cloud;
+  // Re-add local-only tasks to their boards so they aren't lost
+  localOnlyTasks.forEach(lt => {
+    const board = state.boards?.find(b => b.id === lt._boardId) || state.boards?.[0];
+    if (board) { const {_boardId, ...task} = lt; board.tasks = [...(board.tasks||[]), task]; }
+  });
+  // Restore binary attachment data
   (state.boards||[]).forEach(b => (b.tasks||[]).forEach(t =>
     (t.attachments||[]).forEach(a => { const k=`${t.id}:${a.id}`; if (localData[k]) { a.data=localData[k]; delete a.cloudStripped; } })
   ));
+  // Push merged state so other devices get all tasks
+  if (localOnlyTasks.length) schedulePush();
 }
 
 function updateSyncDot(status) {
