@@ -2724,7 +2724,7 @@ async function syncPull() {
     }
     mergeCloudState(record);
     // restore credentials on fresh install (only if not already set locally)
-    const cfg = data.record._config || {};
+    const cfg = record._config || {};
     if (cfg.ai?.apiKey && !aiConfig.apiKey) {
       aiConfig.apiKey = cfg.ai.apiKey;
       saveAiConfigData();
