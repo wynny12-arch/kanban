@@ -2742,8 +2742,7 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     if (syncPushTimer) { clearTimeout(syncPushTimer); syncPushTimer = null; syncPush(); }
   } else {
-    // Don't pull if last push failed — would overwrite unsaved local changes with old cloud data
-    if (syncStatus !== 'error' && !syncPushTimer) syncPull();
+    if (!syncPushTimer) syncPull();
   }
 });
 
