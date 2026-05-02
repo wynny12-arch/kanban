@@ -2515,7 +2515,7 @@ async function syncPush() {
     if (!res.ok) throw new Error(res.status);
     updateSyncDot('synced');
     setTimeout(() => updateSyncDot('idle'), 2000);
-  } catch { updateSyncDot('error'); }
+  } catch(e) { console.error('[sync] push failed:', e); updateSyncDot('error'); showToast('Sync failed — task saved locally, will retry on next open'); }
 }
 
 /* ─── Notifications ──────────────────────────────────────── */
@@ -2717,7 +2717,8 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     if (syncPushTimer) { clearTimeout(syncPushTimer); syncPushTimer = null; syncPush(); }
   } else {
-    syncPull();
+    // Don't pull if last push failed — would overwrite unsaved local changes with old cloud data
+    if (syncStatus !== 'error' && !syncPushTimer) syncPull();
   }
 });
 
