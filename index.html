@@ -2712,8 +2712,13 @@ function schedulePush() {
 }
 
 // Sync when tab becomes visible again (e.g. switching from phone back to Mac)
+// When going to background, flush any pending push immediately before browser pauses JS timers
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) syncPull();
+  if (document.hidden) {
+    if (syncPushTimer) { clearTimeout(syncPushTimer); syncPushTimer = null; syncPush(); }
+  } else {
+    syncPull();
+  }
 });
 
 /* ── Sync modal ──────────────────────────────────────────── */
