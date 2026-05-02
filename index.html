@@ -2515,7 +2515,7 @@ async function syncPush() {
     if (!res.ok) throw new Error(res.status);
     updateSyncDot('synced');
     setTimeout(() => updateSyncDot('idle'), 2000);
-  } catch(e) { console.error('[sync] push failed:', e); updateSyncDot('error'); showToast('Sync failed — task saved locally, will retry on next open'); }
+  } catch(e) { console.error('[sync] push failed:', e); updateSyncDot('error'); showToast('Sync failed (' + (e.message||e) + ') — task saved locally'); }
 }
 
 /* ─── Notifications ──────────────────────────────────────── */
