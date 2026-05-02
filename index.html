@@ -900,7 +900,10 @@ a.attach-badge:hover{opacity:.8;}
   <div class="modal" style="max-width:400px">
     <h2>☁️ Cloud Sync</h2>
     <div class="modal-fields">
-      <p class="sync-note">
+      <p class="sync-note" id="sync-note-supabase" style="display:none">
+        Syncing via <strong>Supabase Storage</strong> (your file storage credentials). No extra setup needed.
+      </p>
+      <p class="sync-note" id="sync-note-jsonbin">
         Sync your board across devices using <a href="https://jsonbin.io" target="_blank">jsonbin.io</a> (free).
         Create a free account, copy your <strong>Master Key</strong>, and paste it below.
       </p>
@@ -2474,45 +2477,54 @@ function updateSyncDot(status) {
   });
 }
 
+const SYNC_FILE = 'kanban-board-state.json';
+function syncReady() { return supEnabled() || (syncConfig.apiKey && syncConfig.binId); }
+
 async function syncPush() {
-  if (!syncConfig.apiKey || !syncConfig.binId) return;
+  if (!syncReady()) return;
   updateSyncDot('syncing');
   try {
-    // First attempt: include compressed images
     const payload = stateForCloud();
-    // If this device has no text-bearing post-its, rescue any that exist in the cloud
-    // so they aren't silently overwritten by our empty local state
-    if (!(payload.postIts || []).some(p => p.text && p.text.trim())) {
-      try {
-        const cr = await fetch(`${JSONBIN}/b/${syncConfig.binId}/latest`, {
-          headers: { 'X-Master-Key': syncConfig.apiKey }
-        });
-        if (cr.ok) {
-          const cd = await cr.json();
-          const kept = (cd.record.postIts || []).filter(p => p.text && p.text.trim());
-          if (kept.length) payload.postIts = kept;
-        }
-      } catch(e) {}
-    }
-    let res = await fetch(`${JSONBIN}/b/${syncConfig.binId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type':'application/json', 'X-Master-Key': syncConfig.apiKey },
-      body: JSON.stringify(payload)
-    });
-    // If payload too large, retry with all binary data stripped
-    if (!res.ok && (res.status === 400 || res.status === 413)) {
-      const stripped = JSON.parse(JSON.stringify(payload));
-      stripped.boards.forEach(b => b.tasks.forEach(t =>
-        (t.attachments||[]).forEach(a => { if (a.data) { delete a.data; a.cloudStripped = true; } })
-      ));
-      res = await fetch(`${JSONBIN}/b/${syncConfig.binId}`, {
+    if (supEnabled()) {
+      // Supabase Storage backend
+      const res = await fetch(`${storageConfig.url}/storage/v1/object/attachments/${SYNC_FILE}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${storageConfig.anonKey}`,
+          'apikey': storageConfig.anonKey,
+          'x-upsert': 'true'
+        },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) throw new Error(res.status);
+    } else {
+      // JSONBin fallback
+      if (!(payload.postIts || []).some(p => p.text && p.text.trim())) {
+        try {
+          const cr = await fetch(`${JSONBIN}/b/${syncConfig.binId}/latest`, { headers: { 'X-Master-Key': syncConfig.apiKey } });
+          if (cr.ok) { const cd = await cr.json(); const kept = (cd.record.postIts || []).filter(p => p.text && p.text.trim()); if (kept.length) payload.postIts = kept; }
+        } catch(e) {}
+      }
+      let res = await fetch(`${JSONBIN}/b/${syncConfig.binId}`, {
         method: 'PUT',
         headers: { 'Content-Type':'application/json', 'X-Master-Key': syncConfig.apiKey },
-        body: JSON.stringify(stripped)
+        body: JSON.stringify(payload)
       });
-      showToast('Photo too large to sync — visible on this device only');
+      if (!res.ok && (res.status === 400 || res.status === 413)) {
+        const stripped = JSON.parse(JSON.stringify(payload));
+        stripped.boards.forEach(b => b.tasks.forEach(t =>
+          (t.attachments||[]).forEach(a => { if (a.data) { delete a.data; a.cloudStripped = true; } })
+        ));
+        res = await fetch(`${JSONBIN}/b/${syncConfig.binId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type':'application/json', 'X-Master-Key': syncConfig.apiKey },
+          body: JSON.stringify(stripped)
+        });
+        showToast('Photo too large to sync — visible on this device only');
+      }
+      if (!res.ok) throw new Error(res.status);
     }
-    if (!res.ok) throw new Error(res.status);
     updateSyncDot('synced');
     setTimeout(() => updateSyncDot('idle'), 2000);
   } catch(e) { console.error('[sync] push failed:', e); updateSyncDot('error'); showToast('Sync failed (' + (e.message||e) + ') — task saved locally'); }
@@ -2672,16 +2684,26 @@ function renderBackups() {
 }
 
 async function syncPull() {
-  if (!syncConfig.apiKey || !syncConfig.binId) return;
+  if (!syncReady()) return;
   takeBackup('Before pull');
   updateSyncDot('syncing');
   try {
-    const res = await fetch(`${JSONBIN}/b/${syncConfig.binId}/latest`, {
-      headers: { 'X-Master-Key': syncConfig.apiKey }
-    });
-    if (!res.ok) throw new Error(res.status);
-    const data = await res.json();
-    mergeCloudState(data.record);
+    let record;
+    if (supEnabled()) {
+      const res = await fetch(`${storageConfig.url}/storage/v1/object/attachments/${SYNC_FILE}`, {
+        headers: { 'Authorization': `Bearer ${storageConfig.anonKey}`, 'apikey': storageConfig.anonKey }
+      });
+      if (!res.ok) throw new Error(res.status);
+      record = await res.json();
+    } else {
+      const res = await fetch(`${JSONBIN}/b/${syncConfig.binId}/latest`, {
+        headers: { 'X-Master-Key': syncConfig.apiKey }
+      });
+      if (!res.ok) throw new Error(res.status);
+      const data = await res.json();
+      record = data.record;
+    }
+    mergeCloudState(record);
     // restore credentials on fresh install (only if not already set locally)
     const cfg = data.record._config || {};
     if (cfg.ai?.apiKey && !aiConfig.apiKey) {
@@ -2706,7 +2728,7 @@ async function syncPull() {
 }
 
 function schedulePush() {
-  if (!syncConfig.apiKey || !syncConfig.binId) return;
+  if (!syncReady()) return;
   clearTimeout(syncPushTimer);
   syncPushTimer = setTimeout(syncPush, 2500);
 }
@@ -2724,11 +2746,15 @@ document.addEventListener('visibilitychange', () => {
 
 /* ── Sync modal ──────────────────────────────────────────── */
 function openSyncModal() {
+  const usingSupabase = supEnabled();
+  document.getElementById('sync-note-supabase').style.display = usingSupabase ? '' : 'none';
+  document.getElementById('sync-note-jsonbin').style.display  = usingSupabase ? 'none' : '';
   document.getElementById('sync-api-key').value = syncConfig.apiKey || '';
   document.getElementById('sync-bin-id').value  = syncConfig.binId  || '';
   syncMsg('');
   showBinDisplay(syncConfig.binId);
-  document.getElementById('sync-pull-btn').style.display = (syncConfig.apiKey && syncConfig.binId) ? '' : 'none';
+  document.getElementById('sync-pull-btn').style.display = syncReady() ? '' : 'none';
+  document.getElementById('sync-connect-btn').style.display = usingSupabase ? 'none' : '';
   renderBackups();
   document.getElementById('sync-overlay').classList.add('open');
 }
