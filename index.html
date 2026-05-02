@@ -271,8 +271,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
 
 /* ── Modal ───────────────────────────────────────────────── */
 .overlay{
-  display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);
-  z-index:200;align-items:center;justify-content:center;
+  display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);
+  backdrop-filter:blur(4px);z-index:200;align-items:center;justify-content:center;
 }
 .overlay.open{display:flex;}
 .modal{
@@ -282,7 +282,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
   transition:background .2s;
   display:flex;flex-direction:column;
   max-height:calc(100vh - 48px);
-  overflow:hidden;
 }
 .modal h2{font-size:1rem;font-weight:700;margin-bottom:18px;color:var(--text);flex-shrink:0;}
 .field{display:flex;flex-direction:column;gap:5px;}
@@ -2741,7 +2740,7 @@ async function syncPull() {
     postIts = (state.postIts || []).filter(p => p.text && p.text.trim()).map(p => ({...p, hidden:true}));
     state.postIts = postIts;
     localStorage.setItem('kanban_v2', JSON.stringify(state));
-    render();
+    if (!document.querySelector('.overlay.open')) render();
     updateSyncDot('synced');
     setTimeout(() => updateSyncDot('idle'), 2000);
   } catch { updateSyncDot('error'); }
