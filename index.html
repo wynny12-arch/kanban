@@ -2498,6 +2498,7 @@ const SYNC_FILE = 'kanban-board-state.json';
 function syncReady() { return supEnabled() || (syncConfig.apiKey && syncConfig.binId); }
 
 async function syncPush() {
+  syncPushTimer = null;
   if (!syncReady()) return;
   updateSyncDot('syncing');
   try {
