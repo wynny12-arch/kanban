@@ -907,13 +907,15 @@ a.attach-badge:hover{opacity:.8;}
         Sync your board across devices using <a href="https://jsonbin.io" target="_blank">jsonbin.io</a> (free).
         Create a free account, copy your <strong>Master Key</strong>, and paste it below.
       </p>
-      <div class="field">
-        <label>Master API Key</label>
-        <input type="password" id="sync-api-key" placeholder="$2b$10$…" oninput="syncMsg('')"/>
-      </div>
-      <div class="field">
-        <label>Bin ID <span style="opacity:.5;font-weight:400">(leave empty on first device)</span></label>
-        <input type="text" id="sync-bin-id" placeholder="Paste Bin ID from another device" oninput="syncMsg('')"/>
+      <div id="sync-jsonbin-fields">
+        <div class="field">
+          <label>Master API Key</label>
+          <input type="password" id="sync-api-key" placeholder="$2b$10$…" oninput="syncMsg('')"/>
+        </div>
+        <div class="field">
+          <label>Bin ID <span style="opacity:.5;font-weight:400">(leave empty on first device)</span></label>
+          <input type="text" id="sync-bin-id" placeholder="Paste Bin ID from another device" oninput="syncMsg('')"/>
+        </div>
       </div>
       <div class="sync-msg" id="sync-msg"></div>
       <div id="sync-bin-display" style="display:none" class="bin-id-box">
@@ -2693,6 +2695,7 @@ async function syncPull() {
       const res = await fetch(`${storageConfig.url}/storage/v1/object/attachments/${SYNC_FILE}`, {
         headers: { 'Authorization': `Bearer ${storageConfig.anonKey}`, 'apikey': storageConfig.anonKey }
       });
+      if (res.status === 400 || res.status === 404) { updateSyncDot('idle'); schedulePush(); return; } // file not created yet — push to create it
       if (!res.ok) throw new Error(res.status);
       record = await res.json();
     } else {
@@ -2747,8 +2750,9 @@ document.addEventListener('visibilitychange', () => {
 /* ── Sync modal ──────────────────────────────────────────── */
 function openSyncModal() {
   const usingSupabase = supEnabled();
-  document.getElementById('sync-note-supabase').style.display = usingSupabase ? '' : 'none';
-  document.getElementById('sync-note-jsonbin').style.display  = usingSupabase ? 'none' : '';
+  document.getElementById('sync-note-supabase').style.display  = usingSupabase ? '' : 'none';
+  document.getElementById('sync-note-jsonbin').style.display   = usingSupabase ? 'none' : '';
+  document.getElementById('sync-jsonbin-fields').style.display = usingSupabase ? 'none' : '';
   document.getElementById('sync-api-key').value = syncConfig.apiKey || '';
   document.getElementById('sync-bin-id').value  = syncConfig.binId  || '';
   syncMsg('');
