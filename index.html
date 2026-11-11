@@ -3171,8 +3171,12 @@ function savePostIts() {
 }
 
 async function addPostIt() {
+  // A local edit not yet pushed (the 2.5s push delay) is NEWER than the cloud copy: push it first, or the pull below
+  // would replace it with the older cloud version (the "closed and reopened a note, my new text was gone" bug).
+  if (syncPushTimer) { clearTimeout(syncPushTimer); syncPushTimer = null; try { await syncPush(); } catch(e) {} }
   // pull fresh data from cloud so notes created on other devices are visible immediately
   if (syncConfig.apiKey && syncConfig.binId) {
+    takeBackup('Before opening notes');
     try {
       const res = await fetch(`${JSONBIN}/b/${syncConfig.binId}/latest`, {
         headers: { 'X-Master-Key': syncConfig.apiKey }
