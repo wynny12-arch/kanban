@@ -752,7 +752,7 @@ a.attach-badge:hover{opacity:.8;}
       <button class="icon-btn widget-mobile-btn" onclick="openWidgetSheet()">📊 Live</button>
       <button class="icon-btn widget-mobile-btn" onclick="openSyncModal()" title="Status"><span class="sync-dot off" id="sync-dot-mobile" title="Cloud sync"></span><span class="sync-dot off" id="storage-dot-mobile" title="File storage"></span><span class="ai-dot off" id="ai-dot-mobile" title="AI"></span> Status</button>
       <button class="icon-btn" onclick="addPostIt()" title="Add sticky note">📝 Post-it</button>
-      <button class="icon-btn" id="sort-toggle-btn" onclick="toggleSortMode()" title="Switch sort mode">⇅ Priority</button>
+      <button class="icon-btn" id="sort-toggle-btn" onclick="toggleSortMode()" title="Sort: Priority → Newest first → Manual">⇅ Priority</button>
       <button class="icon-btn" onclick="openModal(activeCol())">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         Add task
@@ -1087,6 +1087,24 @@ function load() {
 }
 
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2); }
+// When a task was created: its own `created` stamp, else read back from its id (uid() starts with Date.now() in base 36).
+// null when unknown (older ids) — those keep their stored order.
+function createdMs(t) {
+  if (typeof t.created === 'number') return t.created;
+  const ms = parseInt(String(t.id || '').slice(0, 8), 36);
+  return Number.isFinite(ms) && ms > 1577836800000 && ms < Date.now() + 86400000 ? ms : null;
+}
+// Newest first; tasks with no known date go underneath, in their stored order (new tasks are added at the top).
+function sortNewest(tasks, all) {
+  const pos = new Map(all.map((t, i) => [t, i]));
+  return tasks.sort((a, b) => {
+    const x = createdMs(a), y = createdMs(b);
+    if (x != null && y != null && x !== y) return y - x;
+    if (x == null && y != null) return 1;   // an undated (older-style) task goes below the dated ones
+    if (y == null && x != null) return -1;
+    return pos.get(a) - pos.get(b);
+  });
+}
 
 function board() { return state.boards.find(b => b.id === state.activeBoardId) || state.boards[0]; }
 
@@ -1305,6 +1323,7 @@ function renderBoard() {
     }
     if (priFilter !== 'all') tasks = tasks.filter(t => (t.priority||'none') === priFilter);
     if (sortMode === 'priority') tasks.sort((a,b) => PRI_ORDER[a.priority||'none'] - PRI_ORDER[b.priority||'none']);
+    else if (sortMode === 'newest') sortNewest(tasks, b.tasks);
 
     document.getElementById(`count-${col}`).textContent = tasks.length;
     const tabCount = document.getElementById(`tab-count-${col}`);
@@ -1677,8 +1696,8 @@ async function saveModal() {
     const task = b.tasks.find(t => t.id === modalEditId);
     if (task) Object.assign(task, { title, desc, links, priority, due, notify, tags, attachments });
   } else {
-    b.tasks.unshift({ id: taskId, col:modalCol, title, desc, links, priority, due, notify, tags, attachments });
-    if (sortMode !== 'manual') { sortMode = 'manual'; localStorage.setItem('kanban_sort_mode', sortMode); updateSortBtn(); }
+    b.tasks.unshift({ id: taskId, col:modalCol, title, desc, links, priority, due, notify, tags, attachments, created: Date.now() });
+    if (sortMode === 'priority') { sortMode = 'manual'; localStorage.setItem('kanban_sort_mode', sortMode); updateSortBtn(); }
   }
   save(); render(); closeModal();
 }
@@ -2116,6 +2135,7 @@ function renderFocus() {
   if (q) tasks = tasks.filter(t => t.title.toLowerCase().includes(q) || (t.desc||'').toLowerCase().includes(q) || (t.tags||[]).some(tag => tag.toLowerCase().includes(q)));
   if (priFilter !== 'all') tasks = tasks.filter(t => (t.priority||'none') === priFilter);
   if (sortMode === 'priority') tasks.sort((a,b) => PRI_ORDER[a.priority||'none'] - PRI_ORDER[b.priority||'none']);
+  else if (sortMode === 'newest') sortNewest(tasks, b.tasks);
 
   document.getElementById('focus-title').textContent = COL_LABEL[currentFocusCol];
   document.getElementById('focus-count').textContent = tasks.length;
@@ -2307,7 +2327,7 @@ function tdCleanup() {
 }
 
 function toggleSortMode() {
-  sortMode = sortMode === 'priority' ? 'manual' : 'priority';
+  sortMode = sortMode === 'priority' ? 'newest' : sortMode === 'newest' ? 'manual' : 'priority';
   localStorage.setItem('kanban_sort_mode', sortMode);
   updateSortBtn();
   render();
@@ -2320,6 +2340,10 @@ function updateSortBtn() {
     btn.textContent = '↕ Manual';
     btn.style.color = 'var(--accent)';
     btn.style.borderColor = 'var(--accent)';
+  } else if (sortMode === 'newest') {
+    btn.textContent = '↓ Newest';
+    btn.style.color = 'var(--accent)';
+    btn.style.borderColor = 'var(--accent)';
   } else {
     btn.textContent = '⇅ Priority';
     btn.style.color = '';
@@ -2329,6 +2353,7 @@ function updateSortBtn() {
 
 function loadSortMode() {
   sortMode = localStorage.getItem('kanban_sort_mode') || 'priority';
+  if (!['priority', 'newest', 'manual'].includes(sortMode)) sortMode = 'priority';
   updateSortBtn();
 }
 
